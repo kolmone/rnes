@@ -1,5 +1,3 @@
-use std::ops::Add;
-
 #[derive(Debug)]
 pub struct Cpu {
     register_a: u8,
@@ -33,6 +31,46 @@ enum AddressingMode {
     IndirectX,
     IndirectY,
     NoneAddressing,
+}
+
+#[derive(Debug)]
+struct Instruction {
+    opcode: u8,
+    instruction: &'static str,
+    addressing_mode: AddressingMode,
+    bytes: u8,
+    duration: u8,
+}
+
+impl Instruction {
+    pub fn new(opcode: u8, instruction: &'static str, bytes: u8, duration: u8, addressing_mode: AddressingMode) -> Self {
+        Instruction{opcode, instruction, bytes, duration, addressing_mode}
+    }
+}
+
+
+lazy_static::lazy_static! {
+    static ref INSTRUCTIONS: Vec<Instruction> = vec![
+        Instruction::new(0x00, "BRK", 1, 7, AddressingMode::NoneAddressing),
+        
+        // Loads
+        Instruction::new(0xA9, "LDA", 2, 2, AddressingMode::Immediate),
+        Instruction::new(0xA5, "LDA", 2, 2, AddressingMode::ZeroPage),
+        Instruction::new(0xB5, "LDA", 2, 2, AddressingMode::ZeroPageX),
+        Instruction::new(0xAD, "LDA", 3, 4, AddressingMode::Absolute),
+        Instruction::new(0xBD, "LDA", 3, 4, AddressingMode::AbsoluteX), // +1 if page crossed
+        Instruction::new(0xB9, "LDA", 3, 4, AddressingMode::AbsoluteY), // +1 if page crossed
+        Instruction::new(0xA1, "LDA", 2, 6, AddressingMode::IndirectX),
+        Instruction::new(0xB1, "LDA", 2, 5, AddressingMode::IndirectY), // +1 if page crossed
+
+        // Increments
+        Instruction::new(0xE8, "INX", 1, 2, AddressingMode::NoneAddressing),
+        Instruction::new(0xC8, "INY", 1, 2, AddressingMode::NoneAddressing),
+        
+        // Transfers
+        Instruction::new(0xAA, "TAX", 1, 2, AddressingMode::NoneAddressing),
+        Instruction::new(0xA8, "TAY", 1, 2, AddressingMode::NoneAddressing),
+    ];
 }
 
 impl Cpu {
@@ -161,66 +199,37 @@ impl Cpu {
         self.update_zero_neg(self.register_a);
     }
 
+    fn tax(&mut self) {
+        self.register_x = self.register_a;
+        self.update_zero_neg(self.register_x);
+    }
+
+    fn inx(&mut self) {
+        self.register_x = self.register_x.wrapping_add(1);
+        self.update_zero_neg(self.register_x);
+    }
+
     pub fn run(&mut self) {
         loop {
             let op = self.read_mem(self.program_counter);
             self.program_counter += 1;
 
-            match op {
-                // brk
-                0x00 => {
-                    return;
-                }
+            let instruction: &Instruction = INSTRUCTIONS.iter().find(|&x| x.opcode == op).unwrap();
+            println!("{:?}", instruction);
 
-                // lda
-                0xA9 => {
-                    self.lda(&AddressingMode::Immediate);
-                    self.program_counter += 1;
-                }
-                0xA5 => {
-                    self.lda(&AddressingMode::ZeroPage);
-                    self.program_counter += 1;
-                }
-                0xB5 => {
-                    self.lda(&AddressingMode::ZeroPageX);
-                    self.program_counter += 1;
-                }
-                0xAD => {
-                    self.lda(&AddressingMode::Absolute);
-                    self.program_counter += 2;
-                }
-                0xBD => {
-                    self.lda(&AddressingMode::AbsoluteX);
-                    self.program_counter += 2;
-                }
-                0xB9 => {
-                    self.lda(&AddressingMode::AbsoluteY);
-                    self.program_counter += 2;
-                }
-                0xA1 => {
-                    self.lda(&AddressingMode::IndirectX);
-                    self.program_counter += 1;
-                }
-                0xB1 => {
-                    self.lda(&AddressingMode::IndirectY);
-                    self.program_counter += 1;
-                }
+            match instruction.instruction {
+                "BRK" => return,
 
-                // tax
-                0xAA => {
-                    self.register_x = self.register_a;
-                    self.update_zero_neg(self.register_x);
-                }
+                "LDA" => self.lda(&instruction.addressing_mode),
 
-                // inx
-                0xE8 => {
-                    self.register_x = self.register_x.wrapping_add(1);
-                    self.update_zero_neg(self.register_x);
-                }
+                "TAX" => self.tax(),
+
+                "INX" => self.inx(),
 
                 // not yet implemented
                 _ => todo!(),
             }
+            self.program_counter += (instruction.bytes-1) as u16;
         }
     }
 }
