@@ -13,10 +13,11 @@ fn handle_user_input(cpu: &mut Cpu, event_pump: &mut EventPump) {
     for event in event_pump.poll_iter() {
         match event {
             Event::Quit { .. }
-            | Event::KeyDown {
-                keycode: Some(Keycode::Escape),
-                ..
-            } => std::process::exit(0),
+            // | Event::KeyDown {
+            //     keycode: Some(Keycode::Escape),
+            //     ..
+            // } => std::process::exit(0),
+            => std::process::exit(0),
             Event::KeyDown {
                 keycode: Some(Keycode::W),
                 ..
@@ -124,7 +125,7 @@ fn main() {
 
     let mut cpu = cpu::Cpu::new();
 
-    cpu.setup_snake(game_code);
+    cpu.setup_custom(game_code, 0x600);
 
     cpu.run_with_callback(move |cpu| {
         handle_user_input(cpu, &mut event_pump);
