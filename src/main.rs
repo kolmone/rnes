@@ -1,7 +1,7 @@
 mod cpu;
 
 fn main() {
-    let cpu = cpu::Cpu::new();
+    let mut cpu = cpu::Cpu::new();
 
-    println!("{:?}", cpu);
+    cpu.setup_and_run(vec![0x00]);
 }
