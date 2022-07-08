@@ -128,6 +128,25 @@ lazy_static::lazy_static! {
         Instruction::new(0xAC, "LDY", 3, 4, AddressingMode::Absolute),
         Instruction::new(0xBC, "LDY", 3, 4, AddressingMode::AbsoluteX), // +1 if page crossed
 
+        // Store A
+        Instruction::new(0x85, "STA", 2, 3, AddressingMode::ZeroPage),
+        Instruction::new(0x95, "STA", 2, 4, AddressingMode::ZeroPageX),
+        Instruction::new(0x8D, "STA", 3, 4, AddressingMode::Absolute),
+        Instruction::new(0x9D, "STA", 3, 5, AddressingMode::AbsoluteX),
+        Instruction::new(0x99, "STA", 3, 5, AddressingMode::AbsoluteY),
+        Instruction::new(0x81, "STA", 2, 6, AddressingMode::IndirectX),
+        Instruction::new(0x91, "STA", 2, 6, AddressingMode::IndirectY),
+
+        // Store X
+        Instruction::new(0x86, "STX", 2, 3, AddressingMode::ZeroPage),
+        Instruction::new(0x96, "STX", 2, 4, AddressingMode::ZeroPageY),
+        Instruction::new(0x8E, "STX", 3, 4, AddressingMode::Absolute),
+
+        // Store Y
+        Instruction::new(0x84, "STY", 2, 3, AddressingMode::ZeroPage),
+        Instruction::new(0x94, "STY", 2, 4, AddressingMode::ZeroPageY),
+        Instruction::new(0x8C, "STY", 3, 4, AddressingMode::Absolute),
+
         // Increments
         Instruction::new(0xE6, "INC", 2, 5, AddressingMode::ZeroPage),
         Instruction::new(0xF6, "INC", 2, 6, AddressingMode::ZeroPageX),
@@ -147,6 +166,10 @@ lazy_static::lazy_static! {
         // Transfers
         Instruction::new(0xAA, "TAX", 1, 2, AddressingMode::NoneAddressing),
         Instruction::new(0xA8, "TAY", 1, 2, AddressingMode::NoneAddressing),
+        Instruction::new(0xBA, "TSX", 1, 2, AddressingMode::NoneAddressing),
+        Instruction::new(0x8A, "TXA", 1, 2, AddressingMode::NoneAddressing),
+        Instruction::new(0x9A, "TXS", 1, 2, AddressingMode::NoneAddressing),
+        Instruction::new(0x98, "TYA", 1, 2, AddressingMode::NoneAddressing),
 
         // Pushes & pulls
         Instruction::new(0x48, "PHA", 1, 3, AddressingMode::NoneAddressing),
@@ -164,6 +187,16 @@ lazy_static::lazy_static! {
         Instruction::new(0x61, "ADC", 2, 6, AddressingMode::IndirectX),
         Instruction::new(0x71, "ADC", 2, 5, AddressingMode::IndirectY), // +1 if page crossed
 
+        // Substraction
+        Instruction::new(0xE9, "SBC", 2, 2, AddressingMode::Immediate),
+        Instruction::new(0xE5, "SBC", 2, 3, AddressingMode::ZeroPage),
+        Instruction::new(0xF5, "SBC", 2, 4, AddressingMode::ZeroPageX),
+        Instruction::new(0xED, "SBC", 3, 4, AddressingMode::Absolute),
+        Instruction::new(0xFD, "SBC", 3, 4, AddressingMode::AbsoluteX), // +1 if page crossed
+        Instruction::new(0xF9, "SBC", 3, 4, AddressingMode::AbsoluteY), // +1 if page crossed
+        Instruction::new(0xE1, "SBC", 2, 6, AddressingMode::IndirectX),
+        Instruction::new(0xF1, "SBC", 2, 5, AddressingMode::IndirectY), // +1 if page crossed
+
         // Logical AND
         Instruction::new(0x29, "AND", 2, 2, AddressingMode::Immediate),
         Instruction::new(0x25, "AND", 2, 3, AddressingMode::ZeroPage),
@@ -173,7 +206,7 @@ lazy_static::lazy_static! {
         Instruction::new(0x39, "AND", 3, 4, AddressingMode::AbsoluteY), // +1 if page crossed
         Instruction::new(0x21, "AND", 2, 6, AddressingMode::IndirectX),
         Instruction::new(0x31, "AND", 2, 5, AddressingMode::IndirectY), // +1 if page crossed
-        
+
         // Logical exclusive OR
         Instruction::new(0x49, "EOR", 2, 2, AddressingMode::Immediate),
         Instruction::new(0x45, "EOR", 2, 3, AddressingMode::ZeroPage),
@@ -183,7 +216,7 @@ lazy_static::lazy_static! {
         Instruction::new(0x59, "EOR", 3, 4, AddressingMode::AbsoluteY), // +1 if page crossed
         Instruction::new(0x41, "EOR", 2, 6, AddressingMode::IndirectX),
         Instruction::new(0x51, "EOR", 2, 5, AddressingMode::IndirectY), // +1 if page crossed
-        
+
         // Logical OR
         Instruction::new(0x09, "ORA", 2, 2, AddressingMode::Immediate),
         Instruction::new(0x05, "ORA", 2, 3, AddressingMode::ZeroPage),
@@ -200,21 +233,21 @@ lazy_static::lazy_static! {
         Instruction::new(0x16, "ASL", 2, 6, AddressingMode::ZeroPageX),
         Instruction::new(0x0E, "ASL", 3, 6, AddressingMode::Absolute),
         Instruction::new(0x1E, "ASL", 3, 7, AddressingMode::AbsoluteX), // +1 if page crossed
-    
+
         // Logical shift right
         Instruction::new(0x4A, "LSR", 1, 2, AddressingMode::NoneAddressing),
         Instruction::new(0x46, "LSR", 2, 5, AddressingMode::ZeroPage),
         Instruction::new(0x56, "LSR", 2, 6, AddressingMode::ZeroPageX),
         Instruction::new(0x4E, "LSR", 3, 6, AddressingMode::Absolute),
         Instruction::new(0x5E, "LSR", 3, 7, AddressingMode::AbsoluteX), // +1 if page crossed
-    
+
         // Rotate left
         Instruction::new(0x2A, "ROL", 1, 2, AddressingMode::NoneAddressing),
         Instruction::new(0x26, "ROL", 2, 5, AddressingMode::ZeroPage),
         Instruction::new(0x36, "ROL", 2, 6, AddressingMode::ZeroPageX),
         Instruction::new(0x2E, "ROL", 3, 6, AddressingMode::Absolute),
         Instruction::new(0x3E, "ROL", 3, 7, AddressingMode::AbsoluteX), // +1 if page crossed
-    
+
         // Rotate right
         Instruction::new(0x6A, "ROR", 1, 2, AddressingMode::NoneAddressing),
         Instruction::new(0x66, "ROR", 2, 5, AddressingMode::ZeroPage),
@@ -235,7 +268,7 @@ lazy_static::lazy_static! {
         Instruction::new(0x10, "BPL", 2, 2, AddressingMode::NoneAddressing),
         Instruction::new(0x50, "BVC", 2, 2, AddressingMode::NoneAddressing),
         Instruction::new(0x70, "BVS", 2, 2, AddressingMode::NoneAddressing),
-        
+
         // Jumps
         Instruction::new(0x4c, "JMP", 3, 3, AddressingMode::Absolute),
         Instruction::new(0x6c, "JMP", 3, 5, AddressingMode::NoneAddressing),
@@ -250,6 +283,9 @@ lazy_static::lazy_static! {
         Instruction::new(0xD8, "CLD", 1, 2, AddressingMode::NoneAddressing),
         Instruction::new(0x58, "CLI", 1, 2, AddressingMode::NoneAddressing),
         Instruction::new(0xB8, "CLV", 1, 2, AddressingMode::NoneAddressing),
+        Instruction::new(0x38, "SEC", 1, 2, AddressingMode::NoneAddressing),
+        Instruction::new(0xF8, "SED", 1, 2, AddressingMode::NoneAddressing),
+        Instruction::new(0x78, "SEI", 1, 2, AddressingMode::NoneAddressing),
 
         // Compares
         Instruction::new(0xC9, "CMP", 2, 2, AddressingMode::Immediate),
@@ -328,7 +364,7 @@ impl Cpu {
     fn write_mem_u16(&mut self, addr: u16, data: u16) {
         self.memory[(addr as usize)..=((addr + 1) as usize)].copy_from_slice(&data.to_le_bytes());
     }
-    
+
     /// Pushes a 8-bit value onto the stack, decrementing stack pointer
     fn push_stack(&mut self, data: u8) {
         self.write_mem(STACK_PAGE | self.stack_pointer as u16, data);
@@ -341,13 +377,13 @@ impl Cpu {
         self.write_mem_u16(STACK_PAGE | self.stack_pointer as u16, data);
         self.stack_pointer = self.stack_pointer.wrapping_sub(1);
     }
-    
+
     /// Pulls a 8-bit value from the stack, incrementing stack pointer
     fn pull_stack(&mut self) -> u8 {
         self.stack_pointer = self.stack_pointer.wrapping_add(1);
         self.read_mem(STACK_PAGE | self.stack_pointer as u16)
     }
-    
+
     /// Pulls a 16-bit value from the stack, incrementing stack pointer
     fn pull_stack_u16(&mut self) -> u16 {
         self.stack_pointer = self.stack_pointer.wrapping_add(1);
@@ -432,7 +468,7 @@ impl Cpu {
 
         // Overflow if both inputs are different sign than result
         self.status.overflow =
-            (orig_a ^ self.register_a) & (operand ^ self.register_a) & SIGN_MASK == SIGN_MASK;
+            (orig_a ^ self.register_a) & (operand ^ self.register_a) & SIGN_MASK != 0;
 
         // Carry if new value is smaller, or value from operand was 0xFF and carry was set
         self.status.carry = self.register_a < orig_a || self.register_a == orig_a && carry > 0;
@@ -450,14 +486,14 @@ impl Cpu {
         // MSB shifts to carry bit
         match mode {
             &AddressingMode::NoneAddressing => {
-                self.status.carry = self.register_a & SIGN_MASK == SIGN_MASK;
+                self.status.carry = self.register_a & SIGN_MASK != 0;
                 self.register_a <<= 1;
                 self.update_zero_neg(self.register_a);
             }
             _ => {
                 let addr = self.get_operand_addr(mode);
                 let mut operand = self.read_mem(addr);
-                self.status.carry = operand & SIGN_MASK == SIGN_MASK;
+                self.status.carry = operand & SIGN_MASK != 0;
                 operand <<= 1;
                 self.write_mem(addr, operand);
                 self.update_zero_neg(operand);
@@ -574,13 +610,15 @@ impl Cpu {
     fn jmp(&mut self, mode: &AddressingMode) {
         self.program_counter = match mode {
             AddressingMode::Absolute => self.read_mem_u16(self.program_counter),
-            AddressingMode::NoneAddressing => self.read_mem_u16(self.read_mem_u16(self.program_counter)),
-            _ => panic!("Unsupported addressing mode for JMP!")
+            AddressingMode::NoneAddressing => {
+                self.read_mem_u16(self.read_mem_u16(self.program_counter))
+            }
+            _ => panic!("Unsupported addressing mode for JMP!"),
         };
     }
 
     fn jsr(&mut self) {
-        self.push_stack_u16(self.program_counter+1);
+        self.push_stack_u16(self.program_counter + 1);
         self.program_counter = self.read_mem_u16(self.program_counter);
     }
 
@@ -629,8 +667,8 @@ impl Cpu {
         // Carry bit shifts to LSB, MSB shifts to carry bit
         match mode {
             &AddressingMode::NoneAddressing => {
-                let carry_in = if self.status.carry {0x01} else {0x00};
-                self.status.carry = self.register_a & SIGN_MASK == SIGN_MASK;
+                let carry_in = if self.status.carry { 0x01 } else { 0x00 };
+                self.status.carry = self.register_a & SIGN_MASK != 0;
                 self.register_a <<= 1;
                 self.register_a |= carry_in;
                 self.update_zero_neg(self.register_a);
@@ -638,8 +676,8 @@ impl Cpu {
             _ => {
                 let addr = self.get_operand_addr(mode);
                 let mut operand = self.read_mem(addr);
-                let carry_in = if self.status.carry {0x01} else {0x00};
-                self.status.carry = operand & SIGN_MASK == SIGN_MASK;
+                let carry_in = if self.status.carry { 0x01 } else { 0x00 };
+                self.status.carry = operand & SIGN_MASK != 0;
                 operand <<= 1;
                 operand |= carry_in;
                 self.write_mem(addr, operand);
@@ -653,7 +691,7 @@ impl Cpu {
         // Carry bit shifts to MSB, LSB shifts to carry bit
         match mode {
             &AddressingMode::NoneAddressing => {
-                let carry_in = if self.status.carry {0x80} else {0x00};
+                let carry_in = if self.status.carry { 0x80 } else { 0x00 };
                 self.status.carry = self.register_a & 0x80 != 0;
                 self.register_a >>= 1;
                 self.register_a |= carry_in;
@@ -662,7 +700,7 @@ impl Cpu {
             _ => {
                 let addr = self.get_operand_addr(mode);
                 let mut operand = self.read_mem(addr);
-                let carry_in = if self.status.carry {0x80} else {0x00};
+                let carry_in = if self.status.carry { 0x80 } else { 0x00 };
                 self.status.carry = operand & 0x80 != 0;
                 operand >>= 1;
                 operand |= carry_in;
@@ -681,11 +719,54 @@ impl Cpu {
         self.program_counter = self.pull_stack_u16().wrapping_add(1);
     }
 
+    fn sbc(&mut self, mode: &AddressingMode) {
+        let operand = self.read_mem(self.get_operand_addr(mode));
+        let carry = if self.status.carry { 0 } else { 0xFF };
+
+        let operand_neg = (!operand).wrapping_add(1);
+
+        let orig_a = self.register_a;
+        self.register_a = orig_a.wrapping_add(operand_neg).wrapping_add(carry);
+
+        // Overflow if both inputs are different sign than result
+        self.status.overflow =
+            (orig_a ^ self.register_a) & (operand_neg ^ self.register_a) & SIGN_MASK != 0;
+
+        // Carry if new value is smaller, or current value is same as original and carry was set
+        self.status.carry = self.register_a < orig_a || self.register_a == orig_a && carry > 0;
+
+        self.update_zero_neg(self.register_a);
+    }
+
     fn tax(&mut self) {
         self.register_x = self.register_a;
         self.update_zero_neg(self.register_x);
     }
-    
+
+    fn tay(&mut self) {
+        self.register_y = self.register_a;
+        self.update_zero_neg(self.register_y);
+    }
+
+    fn tsx(&mut self) {
+        self.register_x = self.stack_pointer;
+        self.update_zero_neg(self.register_x);
+    }
+
+    fn txa(&mut self) {
+        self.register_a = self.register_x;
+        self.update_zero_neg(self.register_a);
+    }
+
+    fn txs(&mut self) {
+        self.stack_pointer = self.register_x;
+    }
+
+    fn tya(&mut self) {
+        self.register_a = self.register_y;
+        self.update_zero_neg(self.register_a);
+    }
+
     pub fn run(&mut self) {
         loop {
             println!("Executing at address 0x{:x}", self.program_counter);
@@ -739,11 +820,32 @@ impl Cpu {
                 "ROR" => self.ror(&instruction.addressing_mode),
                 "RTI" => self.rti(),
                 "RTS" => self.rts(),
+                "SBC" => self.sbc(&instruction.addressing_mode),
+                "SEC" => self.status.carry = true,
+                "SED" => self.status.decimal = true,
+                "SEI" => self.status.irq_disable = true,
+                "STA" => self.write_mem(
+                    self.get_operand_addr(&instruction.addressing_mode),
+                    self.register_a,
+                ),
+                "STX" => self.write_mem(
+                    self.get_operand_addr(&instruction.addressing_mode),
+                    self.register_x,
+                ),
+                "STY" => self.write_mem(
+                    self.get_operand_addr(&instruction.addressing_mode),
+                    self.register_y,
+                ),
                 "TAX" => self.tax(),
+                "TAY" => self.tay(),
+                "TSX" => self.tsx(),
+                "TXA" => self.txa(),
+                "TXS" => self.txs(),
+                "TYA" => self.tya(),
                 // not yet implemented
                 _ => todo!(),
             }
-            
+
             // Don't increment program counter for some instructions
             match instruction.mnemonic {
                 "JMP" | "JSR" => (),
@@ -958,7 +1060,7 @@ mod test {
         cpu.register_y = 8;
         cpu.status.carry = true;
         cpu.run();
-        assert_eq!(cpu.register_a, 0x81);
+        assert_eq!(cpu.register_a, 0x81); // 80 + 48 + 1 = negative number
         assert!(!cpu.status.zero);
         assert!(cpu.status.negative);
         assert!(!cpu.status.carry);
@@ -1463,5 +1565,170 @@ mod test {
         cpu.run();
         assert_eq!(cpu.stack_pointer, 0x00);
         assert_eq!(cpu.program_counter, 0x4322);
+    }
+
+    #[test]
+    fn test_sbc_keep_carry() {
+        let mut cpu = Cpu::new();
+        cpu.setup(vec![0xe9, 0x10]);
+        cpu.register_a = 0x31;
+        cpu.status.carry = true;
+        cpu.run();
+        assert_eq!(cpu.register_a, 0x21);
+        assert!(cpu.status.carry); // no overflow so carry should stay
+        assert!(!cpu.status.negative);
+        assert!(!cpu.status.overflow);
+        assert!(!cpu.status.zero);
+    }
+
+    #[test]
+    fn test_sbc_no_carry_to_zero() {
+        let mut cpu = Cpu::new();
+        cpu.setup(vec![0xe9, 0x30]);
+        cpu.register_a = 0x31;
+        cpu.run();
+        assert_eq!(cpu.register_a, 0x00);
+        assert!(cpu.status.carry);
+        assert!(!cpu.status.negative);
+        assert!(!cpu.status.overflow);
+        assert!(cpu.status.zero);
+    }
+
+    #[test]
+    fn test_sbc_consume_carry() {
+        let mut cpu = Cpu::new();
+        cpu.setup(vec![0xe9, 0x40]);
+        cpu.register_a = 0x30;
+        cpu.status.carry = true;
+        cpu.run();
+        assert_eq!(cpu.register_a, 0xf0);
+        assert!(!cpu.status.carry); // carry should be consumed
+        assert!(cpu.status.negative);
+        assert!(!cpu.status.overflow);
+        assert!(!cpu.status.zero);
+    }
+
+    #[test]
+    fn test_sbc_overflow() {
+        let mut cpu = Cpu::new();
+        cpu.setup(vec![0xe9, 0x10]);
+        cpu.register_a = 0x88; // -120
+        cpu.status.carry = true;
+        cpu.run();
+        assert_eq!(cpu.register_a, 0x78); // -120-16 turns into +120
+        assert!(cpu.status.carry); // does not consume carry
+        assert!(!cpu.status.negative);
+        assert!(cpu.status.overflow);
+        assert!(!cpu.status.zero);
+    }
+
+    #[test]
+    fn test_sec() {
+        let mut cpu = Cpu::new();
+        cpu.setup(vec![0x38]);
+        cpu.run();
+        assert!(cpu.status.carry);
+    }
+
+    #[test]
+    fn test_sed() {
+        let mut cpu = Cpu::new();
+        cpu.setup(vec![0xf8]);
+        cpu.status.decimal = true;
+        cpu.run();
+        assert!(cpu.status.decimal);
+    }
+
+    #[test]
+    fn test_sei() {
+        let mut cpu = Cpu::new();
+        cpu.setup(vec![0x78]);
+        cpu.run();
+        assert!(cpu.status.irq_disable);
+    }
+
+    #[test]
+    fn test_sta() {
+        let mut cpu = Cpu::new();
+        cpu.setup(vec![0x85, 0x01]);
+        cpu.register_a = 0x78;
+        cpu.run();
+        assert_eq!(cpu.memory[0x01], 0x78);
+    }
+
+    #[test]
+    fn test_stx() {
+        let mut cpu = Cpu::new();
+        cpu.setup(vec![0x86, 0x01]);
+        cpu.register_x = 0x78;
+        cpu.run();
+        assert_eq!(cpu.memory[0x01], 0x78);
+    }
+
+    #[test]
+    fn test_sty() {
+        let mut cpu = Cpu::new();
+        cpu.setup(vec![0x84, 0x01]);
+        cpu.register_y = 0x78;
+        cpu.run();
+        assert_eq!(cpu.memory[0x01], 0x78);
+    }
+
+    #[test]
+    fn test_tay() {
+        let mut cpu = Cpu::new();
+        cpu.setup(vec![0xa8]);
+        cpu.register_a = 0;
+        cpu.register_y = 0x78;
+        cpu.run();
+        assert_eq!(cpu.register_y, 0x00);
+        assert!(!cpu.status.negative);
+        assert!(cpu.status.zero);
+    }
+
+    #[test]
+    fn test_tsx() {
+        let mut cpu = Cpu::new();
+        cpu.setup(vec![0xba]);
+        cpu.stack_pointer = 0xa5;
+        cpu.run();
+        assert_eq!(cpu.register_x, 0xa5);
+        assert!(cpu.status.negative);
+        assert!(!cpu.status.zero);
+    }
+
+    #[test]
+    fn test_txa() {
+        let mut cpu = Cpu::new();
+        cpu.setup(vec![0x8a]);
+        cpu.register_x = 0xa5;
+        cpu.run();
+        assert_eq!(cpu.register_a, 0xa5);
+        assert!(cpu.status.negative);
+        assert!(!cpu.status.zero);
+    }
+
+    #[test]
+    fn test_txs() {
+        let mut cpu = Cpu::new();
+        cpu.setup(vec![0x9a]);
+        cpu.register_x = 0x55;
+        cpu.status.zero = true;
+        cpu.status.negative = true;
+        cpu.run();
+        assert_eq!(cpu.stack_pointer, 0x55);
+        assert!(cpu.status.negative); // does not affect flags
+        assert!(cpu.status.zero);
+    }
+
+    #[test]
+    fn test_tya() {
+        let mut cpu = Cpu::new();
+        cpu.setup(vec![0x98]);
+        cpu.register_y = 0xa5;
+        cpu.run();
+        assert_eq!(cpu.register_a, 0xa5);
+        assert!(cpu.status.negative);
+        assert!(!cpu.status.zero);
     }
 }
