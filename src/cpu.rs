@@ -330,6 +330,7 @@ impl Cpu {
         self.register_a = 0;
         self.register_x = 0;
         self.register_y = 0;
+        self.stack_pointer = 0xfd;
         self.status = StatusFlags {
             carry: false,
             zero: false,
@@ -348,7 +349,7 @@ impl Cpu {
         self.status.negative = val >= 128;
     }
 
-    fn read_mem(&self, addr: u16) -> u8 {
+    pub fn read_mem(&self, addr: u16) -> u8 {
         self.memory[addr as usize]
     }
 
@@ -357,7 +358,7 @@ impl Cpu {
         u16::from_le_bytes(int_bytes.try_into().unwrap())
     }
 
-    fn write_mem(&mut self, addr: u16, data: u8) {
+    pub fn write_mem(&mut self, addr: u16, data: u8) {
         self.memory[addr as usize] = data;
     }
 
@@ -392,9 +393,15 @@ impl Cpu {
         lsb | (self.read_mem(STACK_PAGE | self.stack_pointer as u16) as u16) << 8
     }
 
-    fn setup(&mut self, rom: Vec<u8>) {
+    pub fn setup(&mut self, rom: Vec<u8>) {
         self.memory[0x8000..0x8000 + rom.len()].copy_from_slice(&rom);
         self.write_mem_u16(RESET_ADDR, 0x8000);
+        self.reset();
+    }
+
+    pub fn setup_snake(&mut self, rom: Vec<u8>) {
+        self.memory[0x600..0x600 + rom.len()].copy_from_slice(&rom);
+        self.write_mem_u16(RESET_ADDR, 0x600);
         self.reset();
     }
 
@@ -767,14 +774,26 @@ impl Cpu {
         self.update_zero_neg(self.register_a);
     }
 
-    pub fn run(&mut self) {
+    fn run(&mut self) {
+        self.run_with_callback(|_| {});
+    }
+
+    pub fn run_with_callback<F>(&mut self, mut callback: F)
+    where
+        F: FnMut(&mut Cpu),
+    {
         loop {
-            println!("Executing at address 0x{:x}", self.program_counter);
+            callback(self);
+
             let op = self.read_mem(self.program_counter);
-            self.program_counter += 1;
 
             let instruction = INSTRUCTIONS.iter().find(|x| x.opcode == op).unwrap();
-            println!("{:?}", instruction);
+            println!(
+                "Executing at address 0x{:x}: {:?}",
+                self.program_counter, instruction
+            );
+
+            self.program_counter += 1;
 
             match instruction.mnemonic {
                 "ADC" => self.adc(&instruction.addressing_mode),
