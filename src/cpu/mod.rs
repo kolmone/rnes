@@ -4,22 +4,23 @@ use instr::AddressingMode;
 
 #[derive(Debug)]
 pub struct Cpu {
-    register_a: u8,
-    register_x: u8,
-    register_y: u8,
-    program_counter: u16,
-    stack_pointer: u8,
-    status: StatusFlags,
-    memory: [u8; 0x10000],
+    pub register_a: u8,
+    pub register_x: u8,
+    pub register_y: u8,
+    pub program_counter: u16,
+    pub stack_pointer: u8,
+    pub status: StatusFlags,
+    pub memory: [u8; 0x10000],
 }
 
 #[derive(Debug, Copy, Clone)]
-struct StatusFlags {
+pub struct StatusFlags {
     carry: bool,
     zero: bool,
     irq_disable: bool,
     decimal: bool,
     break_cmd: bool,
+    unused: bool,
     overflow: bool,
     negative: bool,
 }
@@ -30,7 +31,8 @@ impl From<StatusFlags> for u8 {
             | (status.zero as u8) << 1
             | (status.irq_disable as u8) << 2
             | (status.decimal as u8) << 3
-            | (status.break_cmd as u8) << 4
+            | 0
+            | (status.unused as u8) << 5
             | (status.overflow as u8) << 6
             | (status.negative as u8) << 7
     }
@@ -43,7 +45,9 @@ impl From<u8> for StatusFlags {
             zero: status & ZERO_FLAG != 0,
             irq_disable: status & IRQ_DISABLE_FLAG != 0,
             decimal: status & DECIMAL_FLAG != 0,
-            break_cmd: status & BREAK_CMD != 0,
+            break_cmd: status & BREAK_FLAG != 0,
+            // unused: status & UNUSED_FLAG != 0,
+            unused: true,
             overflow: status & OVERFLOW_FLAG != 0,
             negative: status & NEGATIVE_FLAG != 0,
         }
@@ -54,7 +58,8 @@ const CARRY_FLAG: u8 = 0x1 << 0;
 const ZERO_FLAG: u8 = 0x1 << 1;
 const IRQ_DISABLE_FLAG: u8 = 0x1 << 2;
 const DECIMAL_FLAG: u8 = 0x1 << 3;
-const BREAK_CMD: u8 = 0x1 << 4;
+const BREAK_FLAG: u8 = 0x1 << 4;
+const UNUSED_FLAG: u8 = 0x1 << 5;
 const OVERFLOW_FLAG: u8 = 0x1 << 6;
 const NEGATIVE_FLAG: u8 = 0x1 << 7;
 
@@ -73,9 +78,10 @@ impl Cpu {
             status: StatusFlags {
                 carry: false,
                 zero: false,
-                irq_disable: false,
+                irq_disable: true,
                 decimal: false,
                 break_cmd: false,
+                unused: true,
                 overflow: false,
                 negative: false,
             },
@@ -91,9 +97,10 @@ impl Cpu {
         self.status = StatusFlags {
             carry: false,
             zero: false,
-            irq_disable: false,
+            irq_disable: true,
             decimal: false,
             break_cmd: false,
+            unused: true,
             overflow: false,
             negative: false,
         };
@@ -319,10 +326,10 @@ impl Cpu {
     }
 
     fn bit(&mut self, mode: &AddressingMode) {
-        let result = self.register_a & self.read_mem(self.get_operand_addr(mode));
-        self.status.zero = result == 0;
-        self.status.overflow = result & OVERFLOW_FLAG == OVERFLOW_FLAG; // store bit 6
-        self.status.negative = result >= 128; // and bit 7
+        let operand = self.read_mem(self.get_operand_addr(mode));
+        self.status.zero = self.register_a & operand == 0;
+        self.status.overflow = operand & 0x1 << 6 != 0; // store bit 6
+        self.status.negative = operand & 0x1 << 7 != 0; // and bit 7
     }
 
     fn compare(&mut self, source: u8, mode: &AddressingMode) {
@@ -367,7 +374,7 @@ impl Cpu {
     }
 
     fn iny(&mut self) {
-        self.register_y = self.register_x.wrapping_add(1);
+        self.register_y = self.register_y.wrapping_add(1);
         self.update_zero_neg(self.register_y);
     }
 
@@ -375,7 +382,18 @@ impl Cpu {
         self.program_counter = match mode {
             AddressingMode::Absolute => self.read_mem_u16(self.program_counter),
             AddressingMode::NoneAddressing => {
-                self.read_mem_u16(self.read_mem_u16(self.program_counter))
+                // 6502 reads MSB of indirect operand from the wrong address.
+                // If operand is 0x30ff, address is read from 0x30ff and 0x3000
+                // instead of 0x30ff and 0x3100
+                let operand_addr = self.read_mem_u16(self.program_counter);
+                let correct_operand = self.read_mem_u16(operand_addr);
+
+                if operand_addr & 0x00FF == 0x00FF {
+                    let wrong_msb = (self.read_mem(operand_addr & 0xFF00) as u16) << 8;
+                    wrong_msb | correct_operand & 0x00FF
+                } else {
+                    correct_operand
+                }
             }
             _ => panic!("Unsupported addressing mode for JMP!"),
         };
@@ -456,7 +474,7 @@ impl Cpu {
         match mode {
             &AddressingMode::NoneAddressing => {
                 let carry_in = if self.status.carry { 0x80 } else { 0x00 };
-                self.status.carry = self.register_a & 0x80 != 0;
+                self.status.carry = self.register_a & 0x01 != 0;
                 self.register_a >>= 1;
                 self.register_a |= carry_in;
                 self.update_zero_neg(self.register_a);
@@ -465,7 +483,7 @@ impl Cpu {
                 let addr = self.get_operand_addr(mode);
                 let mut operand = self.read_mem(addr);
                 let carry_in = if self.status.carry { 0x80 } else { 0x00 };
-                self.status.carry = operand & 0x80 != 0;
+                self.status.carry = operand & 0x01 != 0;
                 operand >>= 1;
                 operand |= carry_in;
                 self.write_mem(addr, operand);
@@ -476,7 +494,7 @@ impl Cpu {
 
     fn rti(&mut self) {
         self.status = self.pull_stack().into();
-        self.program_counter = self.pull_stack_u16().wrapping_add(1);
+        self.program_counter = self.pull_stack_u16(); //.wrapping_add(1);
     }
 
     fn rts(&mut self) {
@@ -485,19 +503,23 @@ impl Cpu {
 
     fn sbc(&mut self, mode: &AddressingMode) {
         let operand = self.read_mem(self.get_operand_addr(mode));
-        let carry = if self.status.carry { 0 } else { 0xFF };
 
-        let operand_neg = (!operand).wrapping_add(1);
+        let operand_neg = if self.status.carry {
+            (!operand).wrapping_add(1)
+        } else {
+            (!operand)
+        };
 
         let orig_a = self.register_a;
-        self.register_a = orig_a.wrapping_add(operand_neg).wrapping_add(carry);
+        self.register_a = orig_a.wrapping_add(operand_neg);
 
         // Overflow if both inputs are different sign than result
         self.status.overflow =
             (orig_a ^ self.register_a) & (operand_neg ^ self.register_a) & SIGN_MASK != 0;
 
         // Carry if new value is smaller, or current value is same as original and carry was set
-        self.status.carry = self.register_a < orig_a || self.register_a == orig_a && carry > 0;
+        self.status.carry =
+            self.register_a < orig_a || self.register_a == orig_a && !self.status.carry;
 
         self.update_zero_neg(self.register_a);
     }
@@ -545,10 +567,10 @@ impl Cpu {
             let op = self.read_mem(self.program_counter);
 
             let instruction = instr::INSTRUCTIONS.iter().find(|x| x.opcode == op).unwrap();
-            println!(
-                "Executing at address 0x{:x}: {:?}",
-                self.program_counter, instruction
-            );
+            // println!(
+            //     "Executing at address 0x{:x}: {:?}",
+            //     self.program_counter, instruction
+            // );
 
             self.program_counter += 1;
 
@@ -589,8 +611,14 @@ impl Cpu {
                 "NOP" => (),
                 "ORA" => self.ora(&instruction.addressing_mode),
                 "PHA" => self.push_stack(self.register_a),
-                "PHP" => self.push_stack(self.status.into()),
-                "PLA" => self.register_a = self.pull_stack(),
+                "PHP" => {
+                    let status: u8 = self.status.into();
+                    self.push_stack(status | BREAK_FLAG)
+                }
+                "PLA" => {
+                    self.register_a = self.pull_stack();
+                    self.update_zero_neg(self.register_a)
+                }
                 "PLP" => self.status = self.pull_stack().into(),
                 "ROL" => self.rol(&instruction.addressing_mode),
                 "ROR" => self.ror(&instruction.addressing_mode),
@@ -715,7 +743,7 @@ mod test {
         cpu.setup(vec![0xc8]);
         cpu.register_y = 0x50;
         cpu.run();
-        assert_eq!(cpu.register_y, 0x1);
+        assert_eq!(cpu.register_y, 0x51);
         assert!(!cpu.status.zero);
         assert!(!cpu.status.negative);
     }
@@ -945,8 +973,8 @@ mod test {
         cpu.register_a = 0x0F;
         cpu.run();
         assert!(cpu.status.zero);
-        assert!(!cpu.status.negative);
-        assert!(!cpu.status.overflow);
+        assert!(cpu.status.negative);
+        assert!(cpu.status.overflow);
     }
 
     #[test]
@@ -1243,7 +1271,7 @@ mod test {
         cpu.status.carry = true;
         cpu.status.negative = true;
         cpu.run();
-        assert_eq!(cpu.memory[0x0100], 0x81);
+        assert_eq!(cpu.memory[0x0100], 0xb5);
         assert_eq!(cpu.stack_pointer, 0xff);
     }
 
@@ -1327,8 +1355,8 @@ mod test {
         cpu.run();
         assert!(cpu.status.carry);
         assert!(cpu.status.negative);
-        assert_eq!(cpu.stack_pointer, 0x08);
-        assert_eq!(cpu.program_counter, 0x4322);
+        assert_eq!(cpu.stack_pointer, 0x8);
+        assert_eq!(cpu.program_counter, 0x4321);
     }
 
     #[test]

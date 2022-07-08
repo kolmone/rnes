@@ -1,5 +1,6 @@
 mod cpu;
 
+use core::panic;
 use cpu::Cpu;
 use rand::Rng;
 use sdl2::{
@@ -8,6 +9,7 @@ use sdl2::{
     pixels::{Color, PixelFormatEnum},
     EventPump,
 };
+use std::env;
 
 fn handle_user_input(cpu: &mut Cpu, event_pump: &mut EventPump) {
     for event in event_pump.poll_iter() {
@@ -78,7 +80,7 @@ fn read_screen_state(cpu: &Cpu, frame: &mut [u8; 32 * 3 * 32]) -> bool {
     update
 }
 
-fn main() {
+fn run_snake() {
     let game_code = vec![
         0x20, 0x06, 0x06, 0x20, 0x38, 0x06, 0x20, 0x0d, 0x06, 0x20, 0x2a, 0x06, 0x60, 0xa9, 0x02,
         0x85, 0x02, 0xa9, 0x04, 0x85, 0x03, 0xa9, 0x11, 0x85, 0x10, 0xa9, 0x10, 0x85, 0x12, 0xa9,
@@ -139,4 +141,48 @@ fn main() {
 
         std::thread::sleep(std::time::Duration::new(0, 70_000));
     });
+}
+
+fn run_nestest() {
+    let rom: Vec<u8> = std::fs::read("nestest.nes").expect("Unable to open nestest.nes");
+    let rom: Vec<u8> = rom[16..0x4010].to_vec();
+
+    let mut cpu = cpu::Cpu::new();
+    cpu.setup_custom(rom, 0xc000);
+    cpu.run_with_callback(move |cpu| {
+        let status: u8 = cpu.status.into();
+        println!(
+            "{:04X}  A:{:02X} X:{:02X} Y:{:02X} P:{:02X} SP:{:02X}",
+            cpu.program_counter,
+            cpu.register_a,
+            cpu.register_x,
+            cpu.register_y,
+            status,
+            cpu.stack_pointer
+        );
+        if cpu.read_mem(0x0002) != 0 {
+            panic!("Tests failed with code {:x} in 0x02", cpu.read_mem(0x0002));
+        }
+        if cpu.read_mem(0x0003) != 0 {
+            panic!("Tests failed with code {:x} in 0x03", cpu.read_mem(0x0003));
+        }
+    });
+}
+
+fn main() {
+    let args: Vec<String> = env::args().collect();
+
+    if args.len() < 2 {
+        println!("Must provide a parameter! Try:");
+        println!("  snake          -- runs a snake game");
+        println!("  nestest        -- runs a snake game");
+        println!("  --rom <file>   -- runs given rom");
+        return;
+    }
+
+    if args[1] == "snake".to_owned() {
+        run_snake();
+    } else if args[1] == "nestest".to_owned() {
+        run_nestest();
+    }
 }

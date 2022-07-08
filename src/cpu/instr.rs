@@ -84,7 +84,7 @@ lazy_static::lazy_static! {
 
         // Store Y
         Instruction::new(0x84, "STY", 2, 3, AddressingMode::ZeroPage),
-        Instruction::new(0x94, "STY", 2, 4, AddressingMode::ZeroPageY),
+        Instruction::new(0x94, "STY", 2, 4, AddressingMode::ZeroPageX),
         Instruction::new(0x8C, "STY", 3, 4, AddressingMode::Absolute),
 
         // Increments
