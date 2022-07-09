@@ -242,5 +242,120 @@ lazy_static::lazy_static! {
         Instruction::new(0xC0, "CPY", 2, 2, AddressingMode::Immediate),
         Instruction::new(0xC4, "CPY", 2, 3, AddressingMode::ZeroPage),
         Instruction::new(0xCC, "CPY", 3, 4, AddressingMode::Absolute),
+
+        // Unofficial opcodes
+
+        // Regular NOPs, 0xEA is the officical one
+        Instruction::new(0x1A, "NOP", 1, 2, AddressingMode::NoneAddressing),
+        Instruction::new(0x3A, "NOP", 1, 2, AddressingMode::NoneAddressing),
+        Instruction::new(0x5A, "NOP", 1, 2, AddressingMode::NoneAddressing),
+        Instruction::new(0x7A, "NOP", 1, 2, AddressingMode::NoneAddressing),
+        Instruction::new(0xDA, "NOP", 1, 2, AddressingMode::NoneAddressing),
+        Instruction::new(0xFA, "NOP", 1, 2, AddressingMode::NoneAddressing),
+        // SKB/DOP - 2 byte NOP i.e. followed by unused immediate
+        Instruction::new(0x80, "NOP", 2, 2, AddressingMode::NoneAddressing),
+        Instruction::new(0x82, "NOP", 2, 2, AddressingMode::NoneAddressing),
+        Instruction::new(0x89, "NOP", 2, 2, AddressingMode::NoneAddressing),
+        Instruction::new(0xC2, "NOP", 2, 2, AddressingMode::NoneAddressing),
+        Instruction::new(0xE2, "NOP", 2, 2, AddressingMode::NoneAddressing),
+        // IGN - 3 byte NOPs
+        Instruction::new(0x0C, "NOP", 3, 4, AddressingMode::NoneAddressing),
+        Instruction::new(0x1C, "NOP", 3, 4, AddressingMode::NoneAddressing), // +1 if page crossed
+        Instruction::new(0x3C, "NOP", 3, 4, AddressingMode::NoneAddressing), // +1 if page crossed
+        Instruction::new(0x5C, "NOP", 3, 4, AddressingMode::NoneAddressing), // +1 if page crossed
+        Instruction::new(0x7C, "NOP", 3, 4, AddressingMode::NoneAddressing), // +1 if page crossed
+        Instruction::new(0xDC, "NOP", 3, 4, AddressingMode::NoneAddressing), // +1 if page crossed
+        Instruction::new(0xFC, "NOP", 3, 4, AddressingMode::NoneAddressing), // +1 if page crossed
+        Instruction::new(0x04, "NOP", 2, 3, AddressingMode::NoneAddressing),
+        Instruction::new(0x44, "NOP", 2, 3, AddressingMode::NoneAddressing),
+        Instruction::new(0x64, "NOP", 2, 3, AddressingMode::NoneAddressing),
+        Instruction::new(0x14, "NOP", 2, 4, AddressingMode::NoneAddressing),
+        Instruction::new(0x34, "NOP", 2, 4, AddressingMode::NoneAddressing),
+        Instruction::new(0x54, "NOP", 2, 4, AddressingMode::NoneAddressing),
+        Instruction::new(0x74, "NOP", 2, 4, AddressingMode::NoneAddressing),
+        Instruction::new(0xD4, "NOP", 2, 4, AddressingMode::NoneAddressing),
+        Instruction::new(0xF4, "NOP", 2, 4, AddressingMode::NoneAddressing),
+
+        // LAX - LDA combined with TAX
+        Instruction::new(0xAB, "LAX", 2, 2, AddressingMode::Immediate),
+        Instruction::new(0xA7, "LAX", 2, 3, AddressingMode::ZeroPage),
+        Instruction::new(0xB7, "LAX", 2, 4, AddressingMode::ZeroPageY),
+        Instruction::new(0xAF, "LAX", 3, 4, AddressingMode::Absolute),
+        Instruction::new(0xBF, "LAX", 3, 4, AddressingMode::AbsoluteY), // +1 if page crossed
+        Instruction::new(0xA3, "LAX", 2, 6, AddressingMode::IndirectX),
+        Instruction::new(0xB3, "LAX", 2, 5, AddressingMode::IndirectY), // +1 if page crossed
+
+        // SAX - Store A AND X
+        Instruction::new(0x87, "SAX", 2, 3, AddressingMode::ZeroPage),
+        Instruction::new(0x97, "SAX", 2, 4, AddressingMode::ZeroPageY),
+        Instruction::new(0x8F, "SAX", 3, 4, AddressingMode::Absolute),
+        Instruction::new(0x83, "SAX", 2, 6, AddressingMode::IndirectX),
+
+        // SBC - Duplicate instruction
+        Instruction::new(0xEB, "SBC", 2, 2, AddressingMode::Immediate),
+
+        // DCP - DEC and CMP
+        Instruction::new(0xC7, "DCP", 2, 5, AddressingMode::ZeroPage),
+        Instruction::new(0xD7, "DCP", 2, 6, AddressingMode::ZeroPageX),
+        Instruction::new(0xCF, "DCP", 3, 6, AddressingMode::Absolute),
+        Instruction::new(0xDF, "DCP", 3, 7, AddressingMode::AbsoluteX), // +1 if page crossed
+        Instruction::new(0xDB, "DCP", 3, 7, AddressingMode::AbsoluteY), // +1 if page crossed
+        Instruction::new(0xC3, "DCP", 2, 8, AddressingMode::IndirectX),
+        Instruction::new(0xD3, "DCP", 2, 8, AddressingMode::IndirectY), // +1 if page crossed
+
+        // ISB - INC and SBC
+        Instruction::new(0xE7, "ISB", 2, 5, AddressingMode::ZeroPage),
+        Instruction::new(0xF7, "ISB", 2, 6, AddressingMode::ZeroPageX),
+        Instruction::new(0xEF, "ISB", 3, 6, AddressingMode::Absolute),
+        Instruction::new(0xFF, "ISB", 3, 7, AddressingMode::AbsoluteX), // +1 if page crossed
+        Instruction::new(0xFB, "ISB", 3, 7, AddressingMode::AbsoluteY), // +1 if page crossed
+        Instruction::new(0xE3, "ISB", 2, 8, AddressingMode::IndirectX),
+        Instruction::new(0xF3, "ISB", 2, 8, AddressingMode::IndirectY), // +1 if page crossed
+
+        // SLO - ASL and ORA
+        Instruction::new(0x07, "SLO", 2, 5, AddressingMode::ZeroPage),
+        Instruction::new(0x17, "SLO", 2, 6, AddressingMode::ZeroPageX),
+        Instruction::new(0x0F, "SLO", 3, 6, AddressingMode::Absolute),
+        Instruction::new(0x1F, "SLO", 3, 7, AddressingMode::AbsoluteX), // +1 if page crossed
+        Instruction::new(0x1B, "SLO", 3, 7, AddressingMode::AbsoluteY), // +1 if page crossed
+        Instruction::new(0x03, "SLO", 2, 8, AddressingMode::IndirectX),
+        Instruction::new(0x13, "SLO", 2, 8, AddressingMode::IndirectY), // +1 if page crossed
+
+        // RLA - ROL and AND
+        Instruction::new(0x27, "RLA", 2, 5, AddressingMode::ZeroPage),
+        Instruction::new(0x37, "RLA", 2, 6, AddressingMode::ZeroPageX),
+        Instruction::new(0x2F, "RLA", 3, 6, AddressingMode::Absolute),
+        Instruction::new(0x3F, "RLA", 3, 7, AddressingMode::AbsoluteX), // +1 if page crossed
+        Instruction::new(0x3B, "RLA", 3, 7, AddressingMode::AbsoluteY), // +1 if page crossed
+        Instruction::new(0x23, "RLA", 2, 8, AddressingMode::IndirectX),
+        Instruction::new(0x33, "RLA", 2, 8, AddressingMode::IndirectY), // +1 if page crossed
+
+        // SRE - LSR and EOR
+        Instruction::new(0x47, "SRE", 2, 5, AddressingMode::ZeroPage),
+        Instruction::new(0x57, "SRE", 2, 6, AddressingMode::ZeroPageX),
+        Instruction::new(0x4F, "SRE", 3, 6, AddressingMode::Absolute),
+        Instruction::new(0x5F, "SRE", 3, 7, AddressingMode::AbsoluteX), // +1 if page crossed
+        Instruction::new(0x5B, "SRE", 3, 7, AddressingMode::AbsoluteY), // +1 if page crossed
+        Instruction::new(0x43, "SRE", 2, 8, AddressingMode::IndirectX),
+        Instruction::new(0x53, "SRE", 2, 8, AddressingMode::IndirectY), // +1 if page crossed
+
+        // RRA - ROR and ADC
+        Instruction::new(0x67, "RRA", 2, 5, AddressingMode::ZeroPage),
+        Instruction::new(0x77, "RRA", 2, 6, AddressingMode::ZeroPageX),
+        Instruction::new(0x6F, "RRA", 3, 6, AddressingMode::Absolute),
+        Instruction::new(0x7F, "RRA", 3, 7, AddressingMode::AbsoluteX), // +1 if page crossed
+        Instruction::new(0x7B, "RRA", 3, 7, AddressingMode::AbsoluteY), // +1 if page crossed
+        Instruction::new(0x63, "RRA", 2, 8, AddressingMode::IndirectX),
+        Instruction::new(0x73, "RRA", 2, 8, AddressingMode::IndirectY), // +1 if page crossed
     ];
+
+    // LDA #10     - Immediate
+    // LDA $00     - ZeroPage
+    // STY $10,X   - ZeroPageX
+    // LDX $10,Y   - ZeroPageY
+    // JMP $1234   - Absolute
+    // STA $3000,X - AbsoluteX
+    // STA $3000,Y - AbsoluteY
+    // LDA ($40,X) - IndirectX
+    // LDA ($40),Y - IndirectY
 }

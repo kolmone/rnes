@@ -507,7 +507,7 @@ impl Cpu {
         let operand_neg = if self.status.carry {
             (!operand).wrapping_add(1)
         } else {
-            (!operand)
+            !operand
         };
 
         let orig_a = self.register_a;
@@ -519,7 +519,7 @@ impl Cpu {
 
         // Carry if new value is smaller, or current value is same as original and carry was set
         self.status.carry =
-            self.register_a < orig_a || self.register_a == orig_a && !self.status.carry;
+            self.register_a < orig_a || self.register_a == orig_a && self.status.carry;
 
         self.update_zero_neg(self.register_a);
     }
@@ -551,6 +551,51 @@ impl Cpu {
     fn tya(&mut self) {
         self.register_a = self.register_y;
         self.update_zero_neg(self.register_a);
+    }
+
+    // Unofficial opcodes below this
+
+    fn lax(&mut self, mode: &AddressingMode) {
+        self.register_a = self.read_mem(self.get_operand_addr(mode));
+        self.register_x = self.register_a;
+        self.update_zero_neg(self.register_x);
+    }
+
+    fn sax(&mut self, mode: &AddressingMode) {
+        self.write_mem(
+            self.get_operand_addr(mode),
+            self.register_x & self.register_a,
+        );
+    }
+
+    fn dcp(&mut self, mode: &AddressingMode) {
+        self.dec(mode);
+        self.compare(self.register_a, mode);
+    }
+
+    fn isb(&mut self, mode: &AddressingMode) {
+        self.inc(mode);
+        self.sbc(mode);
+    }
+
+    fn slo(&mut self, mode: &AddressingMode) {
+        self.asl(mode);
+        self.ora(mode);
+    }
+
+    fn rla(&mut self, mode: &AddressingMode) {
+        self.rol(mode);
+        self.and(mode);
+    }
+
+    fn sre(&mut self, mode: &AddressingMode) {
+        self.lsr(mode);
+        self.eor(mode);
+    }
+
+    fn rra(&mut self, mode: &AddressingMode) {
+        self.ror(mode);
+        self.adc(mode);
     }
 
     fn run(&mut self) {
@@ -646,6 +691,17 @@ impl Cpu {
                 "TXA" => self.txa(),
                 "TXS" => self.txs(),
                 "TYA" => self.tya(),
+
+                // Unofficial opcodes
+                "LAX" => self.lax(&instruction.addressing_mode),
+                "SAX" => self.sax(&instruction.addressing_mode),
+                "DCP" => self.dcp(&instruction.addressing_mode),
+                "ISB" => self.isb(&instruction.addressing_mode),
+                "SLO" => self.slo(&instruction.addressing_mode),
+                "RLA" => self.rla(&instruction.addressing_mode),
+                "SRE" => self.sre(&instruction.addressing_mode),
+                "RRA" => self.rra(&instruction.addressing_mode),
+
                 // not yet implemented
                 _ => todo!(),
             }
