@@ -23,7 +23,12 @@ pub struct Ppu {
     controller: ControllerReg,
     addr: AddrReg,
     mask: MaskReg,
+    status: StatusReg,
+    oam_addr: u8,
     data_buf: u8, // Buffered RAM/ROM data
+    vertical_scroll: u8,
+    horizontal_scroll: u8,
+    on_vert_scroll: bool,
 }
 
 const REG_CONTROLLER: u16 = 0x2000;
@@ -99,17 +104,17 @@ struct ControllerReg {
     generate_nmi: bool,
 }
 
-impl Into<ControllerReg> for u8 {
-    fn into(self) -> ControllerReg {
-        ControllerReg {
-            nametable1: self & 0x1 != 0,
-            nametable2: self & 0x2 != 0,
-            increment: self & 0x4 != 0,
-            sprite_addr: self & 0x8 != 0,
-            background_addr: self & 0x10 != 0,
-            sprite_size: self & 0x20 != 0,
-            ppu_master: self & 0x40 != 0,
-            generate_nmi: self & 0x80 != 0,
+impl From<u8> for ControllerReg {
+    fn from(controller: u8) -> Self {
+        Self {
+            nametable1: controller & 0x1 != 0,
+            nametable2: controller & 0x2 != 0,
+            increment: controller & 0x4 != 0,
+            sprite_addr: controller & 0x8 != 0,
+            background_addr: controller & 0x10 != 0,
+            sprite_size: controller & 0x20 != 0,
+            ppu_master: controller & 0x40 != 0,
+            generate_nmi: controller & 0x80 != 0,
         }
     }
 }
@@ -140,17 +145,17 @@ struct MaskReg {
     emphasize_blue: bool,
 }
 
-impl Into<MaskReg> for u8 {
-    fn into(self) -> MaskReg {
-        MaskReg {
-            greyscale: self & 0x1 != 0,
-            left_background: self & 0x2 != 0,
-            left_sprites: self & 0x4 != 0,
-            show_background: self & 0x8 != 0,
-            show_sprites: self & 0x10 != 0,
-            emphasize_red: self & 0x20 != 0,
-            emphasize_green: self & 0x40 != 0,
-            emphasize_blue: self & 0x80 != 0,
+impl From<u8> for MaskReg {
+    fn from(mask: u8) -> Self {
+        Self {
+            greyscale: mask & 0x1 != 0,
+            left_background: mask & 0x2 != 0,
+            left_sprites: mask & 0x4 != 0,
+            show_background: mask & 0x8 != 0,
+            show_sprites: mask & 0x10 != 0,
+            emphasize_red: mask & 0x20 != 0,
+            emphasize_green: mask & 0x40 != 0,
+            emphasize_blue: mask & 0x80 != 0,
         }
     }
 }
@@ -158,6 +163,31 @@ impl Into<MaskReg> for u8 {
 impl MaskReg {
     fn new() -> Self {
         0.into()
+    }
+}
+
+#[derive(Debug, Copy, Clone)]
+struct StatusReg {
+    sprite_overflow: bool,
+    sprite0_hit: bool,
+    vblank: bool,
+}
+
+impl StatusReg {
+    fn new() -> Self {
+        Self {
+            sprite_overflow: false,
+            sprite0_hit: false,
+            vblank: false,
+        }
+    }
+}
+
+impl From<StatusReg> for u8 {
+    fn from(status: StatusReg) -> Self {
+        (status.sprite_overflow as u8) << 5
+            | (status.sprite0_hit as u8) << 6
+            | (status.vblank as u8) << 7
     }
 }
 
@@ -172,17 +202,40 @@ impl Ppu {
             controller: ControllerReg::new(),
             addr: AddrReg::new(),
             mask: MaskReg::new(),
+            status: StatusReg::new(),
+            oam_addr: 0,
             data_buf: 0,
+            vertical_scroll: 0,
+            horizontal_scroll: 0,
+            on_vert_scroll: true,
         }
     }
 
     pub fn read(&mut self, addr: u16) -> u8 {
         let addr = addr & PPU_BUS_MIRROR_MASK;
         match addr {
-            REG_STATUS => todo!(),
-            REG_OAM_DATA => todo!(),
+            REG_STATUS => {
+                let old_status = self.status.into();
+                self.status.vblank = false;
+                old_status
+            }
+            REG_OAM_DATA => self.oam_read(),
             REG_DATA => self.data_read(),
             _ => panic!("Read from unsupported PPU address at 0x{:x}", addr),
+        }
+    }
+
+    pub fn write(&mut self, addr: u16, data: u8) {
+        let addr = addr & PPU_BUS_MIRROR_MASK;
+        match addr {
+            REG_CONTROLLER => self.controller = data.into(),
+            REG_MASK => self.mask = data.into(),
+            REG_OAM_ADDR => self.oam_addr = data,
+            REG_OAM_DATA => self.oam_write(data),
+            REG_SCROLL => self.scroll_write(data),
+            REG_ADDR => self.addr.write(data),
+            REG_DATA => self.data_write(data),
+            _ => panic!("Write to read-only PPU register at 0x{:x}", addr),
         }
     }
 
@@ -208,20 +261,6 @@ impl Ppu {
         }
     }
 
-    pub fn write(&mut self, addr: u16, data: u8) {
-        let addr = addr & PPU_BUS_MIRROR_MASK;
-        match addr {
-            REG_CONTROLLER => self.controller = data.into(),
-            REG_MASK => self.mask = data.into(),
-            REG_OAM_ADDR => todo!(),
-            REG_OAM_DATA => todo!(),
-            REG_SCROLL => todo!(),
-            REG_ADDR => self.addr.write(data),
-            REG_DATA => todo!(),
-            _ => panic!("Write to read-only PPU register at 0x{:x}", addr),
-        }
-    }
-
     fn data_write(&mut self, data: u8) {
         let addr = self.addr.get();
         self.addr.increment(self.controller.get_increment());
@@ -232,6 +271,26 @@ impl Ppu {
             0x3F00..=0x3FFF => self.palette[(addr - 0x3F00) as usize] = data,
             _ => panic!("Data write to unsupported PPU address at 0x{:x}", addr),
         }
+    }
+
+    fn oam_read(&mut self) -> u8 {
+        let addr = self.oam_addr;
+        self.oam_addr = self.oam_addr.wrapping_add(1);
+        self.oam[addr as usize]
+    }
+
+    fn oam_write(&mut self, data: u8) {
+        self.oam[self.oam_addr as usize] = data;
+        self.oam_addr = self.oam_addr.wrapping_add(1);
+    }
+
+    fn scroll_write(&mut self, data: u8) {
+        if self.on_vert_scroll {
+            self.vertical_scroll = data;
+        } else {
+            self.horizontal_scroll = data;
+        }
+        self.on_vert_scroll = !self.on_vert_scroll;
     }
 
     // Horizontal mirroring - first two 1kB areas map to first 1kB screen
@@ -382,5 +441,56 @@ mod test {
         assert_eq!(ppu.read(0x2007), 34);
         assert_eq!(ppu.read(0x2007), 66);
         assert_eq!(ppu.read(0x2007), 67);
+    }
+
+    #[test]
+    fn test_ppu_data_write_vram() {
+        let mut ppu = Ppu::new(vec![0; 0], Mirroring::Vertical);
+
+        ppu.write(0x2006, 0x21);
+        ppu.write(0x2006, 0x45);
+
+        ppu.write(0x2007, 0x56);
+        ppu.write(0x2007, 0x65);
+
+        assert_eq!(ppu.vram[0x145], 0x56);
+        assert_eq!(ppu.vram[0x146], 0x65);
+    }
+
+    #[test]
+    fn test_ppu_oam_read() {
+        let mut ppu = Ppu::new(vec![0; 0], Mirroring::Vertical);
+
+        ppu.oam[0x21] = 0x56;
+        ppu.write(0x2003, 0x21);
+
+        assert_eq!(ppu.read(0x2004), 0x56);
+    }
+
+    #[test]
+    fn test_ppu_oam_write() {
+        let mut ppu = Ppu::new(vec![0; 0], Mirroring::Vertical);
+
+        ppu.write(0x2003, 0x21);
+        ppu.write(0x2004, 0x56);
+
+        assert_eq!(ppu.oam[0x21], 0x56);
+    }
+
+    #[test]
+    fn test_scroll_write() {
+        let mut ppu = Ppu::new(vec![0; 0], Mirroring::Vertical);
+
+        ppu.write(0x2005, 0x21);
+        ppu.write(0x2005, 0x56);
+
+        assert_eq!(ppu.vertical_scroll, 0x21);
+        assert_eq!(ppu.horizontal_scroll, 0x56);
+
+        ppu.write(0x2005, 0x17);
+        ppu.write(0x2005, 0x34);
+
+        assert_eq!(ppu.vertical_scroll, 0x17);
+        assert_eq!(ppu.horizontal_scroll, 0x34);
     }
 }
