@@ -29,6 +29,10 @@ pub struct Ppu {
     vertical_scroll: u8,
     horizontal_scroll: u8,
     on_vert_scroll: bool,
+
+    scanline: u16,
+    cycles: usize,
+    nmi_triggered: bool,
 }
 
 const REG_CONTROLLER: u16 = 0x2000;
@@ -208,7 +212,38 @@ impl Ppu {
             vertical_scroll: 0,
             horizontal_scroll: 0,
             on_vert_scroll: true,
+            scanline: 0,
+            cycles: 0,
+            nmi_triggered: false,
         }
+    }
+
+    pub fn tick(&mut self, cycles: u8) {
+        self.cycles += cycles as usize;
+        if self.cycles >= 341 {
+            self.cycles = self.cycles - 341;
+            self.scanline += 1;
+
+            if self.scanline == 241 {
+                self.status.vblank = true;
+                if self.controller.generate_nmi {
+                    self.nmi_triggered = true;
+                }
+            }
+
+            if self.scanline >= 262 {
+                self.scanline = 0;
+                self.status.vblank = false;
+            }
+        }
+    }
+
+    pub fn nmi_triggered(&mut self) -> bool {
+        if self.nmi_triggered {
+            self.nmi_triggered = false;
+            return true;
+        }
+        return false;
     }
 
     pub fn read(&mut self, addr: u16) -> u8 {
@@ -228,7 +263,13 @@ impl Ppu {
     pub fn write(&mut self, addr: u16, data: u8) {
         let addr = addr & PPU_BUS_MIRROR_MASK;
         match addr {
-            REG_CONTROLLER => self.controller = data.into(),
+            REG_CONTROLLER => {
+                let old_nmi_val = self.controller.generate_nmi;
+                self.controller = data.into();
+                if !old_nmi_val && self.controller.generate_nmi && self.status.vblank {
+                    self.nmi_triggered = true;
+                }
+            }
             REG_MASK => self.mask = data.into(),
             REG_OAM_ADDR => self.oam_addr = data,
             REG_OAM_DATA => self.oam_write(data),

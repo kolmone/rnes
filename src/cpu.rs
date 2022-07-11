@@ -588,6 +588,15 @@ impl Cpu {
         self.run_with_callback(|_| {});
     }
 
+    fn nmi(&mut self) {
+        self.push_stack_u16(self.program_counter);
+        self.push_stack(self.status.into());
+        self.status.irq_disable = true;
+
+        self.bus.tick(2);
+        self.program_counter = self.bus.read_u16(0xFFFA);
+    }
+
     pub fn run_with_callback<F>(&mut self, mut callback: F)
     where
         F: FnMut(&mut Cpu),
@@ -688,14 +697,20 @@ impl Cpu {
                 "SRE" => self.sre(&instruction.addressing_mode),
                 "RRA" => self.rra(&instruction.addressing_mode),
 
-                // not yet implemented
-                _ => todo!(),
+                // Should never happen
+                _ => panic!("Uncrecognized mnemonic {}", instruction.mnemonic),
             }
+
+            self.bus.tick(instruction.duration);
 
             // Don't increment program counter for some instructions
             match instruction.mnemonic {
                 "JMP" | "JSR" => (),
                 _ => self.program_counter += (instruction.bytes - 1) as u16,
+            }
+
+            if self.bus.get_nmi_state() {
+                self.nmi();
             }
         }
     }

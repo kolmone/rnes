@@ -5,6 +5,7 @@ pub struct Bus {
     ram: [u8; 0x800],
     prg: Vec<u8>,
     ppu: Ppu,
+    cycles: usize,
 }
 
 #[derive(Debug, Copy, Clone)]
@@ -74,11 +75,21 @@ const RAM_ADDR_MIRROR_MASK: u16 = 0x07FF;
 
 impl Bus {
     pub fn new(rom: Rom) -> Self {
-        Bus {
+        Self {
             ram: [0; 0x800],
             prg: rom.prg,
             ppu: Ppu::new(rom.chr, rom.mirroring),
+            cycles: 0,
         }
+    }
+
+    pub fn tick(&mut self, cycles: u8) {
+        self.cycles += cycles as usize;
+        self.ppu.tick(cycles * 3);
+    }
+
+    pub fn get_nmi_state(&mut self) -> bool {
+        self.ppu.nmi_triggered()
     }
 
     pub fn read(&mut self, addr: u16) -> u8 {
