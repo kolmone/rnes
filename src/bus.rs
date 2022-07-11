@@ -1,10 +1,13 @@
+use crate::ppu::Ppu;
+
 #[derive(Debug)]
 pub struct Bus {
     ram: [u8; 0x800],
-    rom: Rom,
+    prg: Vec<u8>,
+    ppu: Ppu,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Copy, Clone)]
 pub enum Mirroring {
     Vertical,
     Horizontal,
@@ -68,26 +71,26 @@ const ROM_START: u16 = 0x8000;
 const ROM_END: u16 = 0xFFFF;
 
 const RAM_ADDR_MIRROR_MASK: u16 = 0x07FF;
-const PPU_ADDR_MIRROR_MASK: u16 = 0x2007;
 
 impl Bus {
     pub fn new(rom: Rom) -> Self {
         Bus {
             ram: [0; 0x800],
-            rom,
+            prg: rom.prg,
+            ppu: Ppu::new(rom.chr, rom.mirroring),
         }
     }
 
-    pub fn read(&self, addr: u16) -> u8 {
+    pub fn read(&mut self, addr: u16) -> u8 {
         match addr {
             RAM_START..=RAM_END => self.ram[(addr & RAM_ADDR_MIRROR_MASK) as usize],
-            PPU_REGISTERS_START..=PPU_REGISTERS_END => todo!("PPU read not yet implemented!"),
+            PPU_REGISTERS_START..=PPU_REGISTERS_END => self.ppu.read(addr),
             ROM_START.. => self.read_prg(addr),
             _ => panic!("Read to unknown address 0x{:X}", addr),
         }
     }
 
-    pub fn read_u16(&self, addr: u16) -> u16 {
+    pub fn read_u16(&mut self, addr: u16) -> u16 {
         let lsb = self.read(addr) as u16;
         let msb = self.read(addr.wrapping_add(1)) as u16;
         (msb << 8) | lsb
@@ -96,7 +99,7 @@ impl Bus {
     pub fn write(&mut self, addr: u16, data: u8) {
         match addr {
             RAM_START..=RAM_END => self.ram[(addr & RAM_ADDR_MIRROR_MASK) as usize] = data,
-            PPU_REGISTERS_START..=PPU_REGISTERS_END => todo!("PPU write not yet implemented!"),
+            PPU_REGISTERS_START..=PPU_REGISTERS_END => self.ppu.write(addr, data),
             ROM_START.. => panic!("Write to ROM space"),
             _ => panic!("Write to unknown address 0x{:X}", addr),
         }
@@ -111,9 +114,9 @@ impl Bus {
 
     fn read_prg(&self, mut addr: u16) -> u8 {
         addr -= ROM_START;
-        if self.rom.prg.len() == 0x4000 {
+        if self.prg.len() == 0x4000 {
             addr %= 0x4000;
         }
-        self.rom.prg[addr as usize]
+        self.prg[addr as usize]
     }
 }

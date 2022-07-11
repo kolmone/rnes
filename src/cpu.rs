@@ -149,7 +149,7 @@ impl Cpu {
         self.program_counter = 0x600;
     }
 
-    fn get_operand_addr(&self, mode: &AddressingMode) -> u16 {
+    fn get_operand_addr(&mut self, mode: &AddressingMode) -> u16 {
         match mode {
             // Data is the parameter
             AddressingMode::Immediate => self.program_counter,
@@ -208,7 +208,8 @@ impl Cpu {
     }
 
     fn adc(&mut self, mode: &AddressingMode) {
-        let operand = self.bus.read(self.get_operand_addr(mode));
+        let addr = self.get_operand_addr(mode);
+        let operand = self.bus.read(addr);
         let carry = if self.status.carry { 1 } else { 0 };
 
         let orig_a = self.register_a;
@@ -225,7 +226,8 @@ impl Cpu {
     }
 
     fn and(&mut self, mode: &AddressingMode) {
-        self.register_a &= self.bus.read(self.get_operand_addr(mode));
+        let addr = self.get_operand_addr(mode);
+        self.register_a &= self.bus.read(addr);
         self.update_zero_neg(self.register_a);
     }
 
@@ -303,14 +305,16 @@ impl Cpu {
     }
 
     fn bit(&mut self, mode: &AddressingMode) {
-        let operand = self.bus.read(self.get_operand_addr(mode));
+        let addr = self.get_operand_addr(mode);
+        let operand = self.bus.read(addr);
         self.status.zero = self.register_a & operand == 0;
         self.status.overflow = operand & 0x1 << 6 != 0; // store bit 6
         self.status.negative = operand & 0x1 << 7 != 0; // and bit 7
     }
 
     fn compare(&mut self, source: u8, mode: &AddressingMode) {
-        let operand = self.bus.read(self.get_operand_addr(mode));
+        let addr = self.get_operand_addr(mode);
+        let operand = self.bus.read(addr);
         self.status.carry = source >= operand;
         self.status.zero = source == operand;
         self.status.negative = source.wrapping_sub(operand) & SIGN_MASK != 0;
@@ -334,7 +338,8 @@ impl Cpu {
     }
 
     fn eor(&mut self, mode: &AddressingMode) {
-        self.register_a ^= self.bus.read(self.get_operand_addr(mode));
+        let addr = self.get_operand_addr(mode);
+        self.register_a ^= self.bus.read(addr);
         self.update_zero_neg(self.register_a);
     }
 
@@ -382,17 +387,20 @@ impl Cpu {
     }
 
     fn lda(&mut self, mode: &AddressingMode) {
-        self.register_a = self.bus.read(self.get_operand_addr(mode));
+        let addr = self.get_operand_addr(mode);
+        self.register_a = self.bus.read(addr);
         self.update_zero_neg(self.register_a);
     }
 
     fn ldx(&mut self, mode: &AddressingMode) {
-        self.register_x = self.bus.read(self.get_operand_addr(mode));
+        let addr = self.get_operand_addr(mode);
+        self.register_x = self.bus.read(addr);
         self.update_zero_neg(self.register_x);
     }
 
     fn ldy(&mut self, mode: &AddressingMode) {
-        self.register_y = self.bus.read(self.get_operand_addr(mode));
+        let addr = self.get_operand_addr(mode);
+        self.register_y = self.bus.read(addr);
         self.update_zero_neg(self.register_y);
     }
 
@@ -417,7 +425,8 @@ impl Cpu {
     }
 
     fn ora(&mut self, mode: &AddressingMode) {
-        self.register_a |= self.bus.read(self.get_operand_addr(mode));
+        let addr = self.get_operand_addr(mode);
+        self.register_a |= self.bus.read(addr);
         self.update_zero_neg(self.register_a);
     }
 
@@ -479,7 +488,8 @@ impl Cpu {
     }
 
     fn sbc(&mut self, mode: &AddressingMode) {
-        let operand = self.bus.read(self.get_operand_addr(mode));
+        let addr = self.get_operand_addr(mode);
+        let operand = self.bus.read(addr);
 
         let operand_neg = if self.status.carry {
             (!operand).wrapping_add(1)
@@ -533,16 +543,15 @@ impl Cpu {
     // Unofficial opcodes below this
 
     fn lax(&mut self, mode: &AddressingMode) {
-        self.register_a = self.bus.read(self.get_operand_addr(mode));
+        let addr = self.get_operand_addr(mode);
+        self.register_a = self.bus.read(addr);
         self.register_x = self.register_a;
         self.update_zero_neg(self.register_x);
     }
 
     fn sax(&mut self, mode: &AddressingMode) {
-        self.bus.write(
-            self.get_operand_addr(mode),
-            self.register_x & self.register_a,
-        );
+        let addr = self.get_operand_addr(mode);
+        self.bus.write(addr, self.register_x & self.register_a);
     }
 
     fn dcp(&mut self, mode: &AddressingMode) {
@@ -650,18 +659,18 @@ impl Cpu {
                 "SEC" => self.status.carry = true,
                 "SED" => self.status.decimal = true,
                 "SEI" => self.status.irq_disable = true,
-                "STA" => self.bus.write(
-                    self.get_operand_addr(&instruction.addressing_mode),
-                    self.register_a,
-                ),
-                "STX" => self.bus.write(
-                    self.get_operand_addr(&instruction.addressing_mode),
-                    self.register_x,
-                ),
-                "STY" => self.bus.write(
-                    self.get_operand_addr(&instruction.addressing_mode),
-                    self.register_y,
-                ),
+                "STA" => {
+                    let addr = self.get_operand_addr(&instruction.addressing_mode);
+                    self.bus.write(addr, self.register_a)
+                }
+                "STX" => {
+                    let addr = self.get_operand_addr(&instruction.addressing_mode);
+                    self.bus.write(addr, self.register_x)
+                }
+                "STY" => {
+                    let addr = self.get_operand_addr(&instruction.addressing_mode);
+                    self.bus.write(addr, self.register_y)
+                }
                 "TAX" => self.tax(),
                 "TAY" => self.tay(),
                 "TSX" => self.tsx(),
