@@ -240,6 +240,7 @@ impl Ppu {
 
     pub fn nmi_triggered(&mut self) -> bool {
         if self.nmi_triggered {
+            println!("NMI triggered!");
             self.nmi_triggered = false;
             return true;
         }

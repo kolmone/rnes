@@ -1,10 +1,12 @@
 mod bus;
 mod cpu;
+mod frame;
 mod ppu;
 
 use bus::{Bus, Rom};
 use core::panic;
 use cpu::Cpu;
+use frame::Frame;
 use rand::Rng;
 use sdl2::{
     event::Event,
@@ -155,14 +157,81 @@ fn run_nestest() {
     });
 }
 
+fn run_rom(file: &str) {
+    let rom: Vec<u8> = std::fs::read(file).expect("Unable to open nestest.nes");
+    let bus = Bus::new(Rom::new(rom).unwrap());
+    let mut cpu = Cpu::new(bus);
+    cpu.reset();
+    cpu.run_with_callback(move |cpu| {
+        trace(cpu);
+    });
+}
+
+fn draw_tiles(rom: &str) {
+    let sdl_context = sdl2::init().unwrap();
+    let video_subsystem = sdl_context.video().unwrap();
+    let window = video_subsystem
+        .window("N3S", (256) as u32, (240) as u32)
+        .position_centered()
+        .build()
+        .unwrap();
+
+    let mut canvas = window.into_canvas().present_vsync().build().unwrap();
+    let mut event_pump = sdl_context.event_pump().unwrap();
+
+    let tex_creator = canvas.texture_creator();
+    let mut texture = tex_creator
+        .create_texture_target(PixelFormatEnum::RGB24, 32, 32)
+        .unwrap();
+
+    let mut screen_state = [0 as u8; 32 * 3 * 32];
+    let mut rng = rand::thread_rng();
+
+    let rom: Vec<u8> = std::fs::read(rom).expect("Unable to open ROM");
+    let rom = Rom::new(rom).unwrap();
+
+    let tile_frame = Frame::show_tile(&rom.chr, 1, 8);
+
+    // let bus = Bus::new(Rom::new(rom).unwrap());
+    // let mut cpu = Cpu::new(bus);
+    // cpu.reset();
+
+    // cpu.run_with_callback(move |cpu| {
+    //     trace(cpu);
+    //     handle_user_input(cpu, &mut event_pump);
+    //     cpu.bus.write(0x00FE, rng.gen_range(1..16));
+
+    //     if read_screen_state(cpu, &mut screen_state) {
+    //         texture.update(None, &screen_state, 32 * 3).unwrap();
+    //         canvas.copy(&texture, None, None).unwrap();
+    //         canvas.present();
+    //     }
+
+    //     std::thread::sleep(std::time::Duration::new(0, 70_000));
+    // });
+
+    texture.update(None, &tile_frame.data, 256 * 3).unwrap();
+    canvas.copy(&texture, None, None).unwrap();
+    canvas.present();
+
+    loop {
+        for event in event_pump.poll_iter() {
+            match event {
+                Event::Quit { .. } => std::process::exit(0),
+                _ => { /* do nothing */ }
+            }
+        }
+    }
+}
+
 fn main() {
     let args: Vec<String> = env::args().collect();
 
-    if args.len() < 2 {
-        println!("Must provide a parameter! Try:");
+    if args.len() != 2 {
+        println!("Must provide exactly one parameter! Try:");
         println!("  snake          -- runs a snake game");
         println!("  nestest        -- runs a snake game");
-        println!("  --rom <file>   -- runs given rom");
+        println!("  <file>         -- runs given rom");
         return;
     }
 
@@ -170,5 +239,7 @@ fn main() {
         run_snake();
     } else if args[1] == "nestest".to_owned() {
         run_nestest();
+    } else {
+        draw_tiles(&args[1]);
     }
 }
