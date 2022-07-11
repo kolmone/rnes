@@ -97,7 +97,10 @@ impl Bus {
             RAM_START..=RAM_END => self.ram[(addr & RAM_ADDR_MIRROR_MASK) as usize],
             PPU_REGISTERS_START..=PPU_REGISTERS_END => self.ppu.read(addr),
             ROM_START.. => self.read_prg(addr),
-            _ => panic!("Read to unknown address 0x{:X}", addr),
+            _ => {
+                println!("Read from unknown address 0x{:X}", addr);
+                0
+            }
         }
     }
 
@@ -113,7 +116,7 @@ impl Bus {
             PPU_REGISTERS_START..=PPU_REGISTERS_END => self.ppu.write(addr, data),
             OAM_DMA_ADDR => self.oam_dma(data),
             ROM_START.. => panic!("Write to ROM space"),
-            _ => panic!("Write to unknown address 0x{:X}", addr),
+            _ => println!("Write to unknown address 0x{:X}", addr),
         }
     }
 

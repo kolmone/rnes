@@ -240,6 +240,6 @@ fn main() {
     } else if args[1] == "nestest".to_owned() {
         run_nestest();
     } else {
-        draw_tiles(&args[1]);
+        run_rom(&args[1]);
     }
 }
