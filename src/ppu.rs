@@ -1,18 +1,5 @@
-/*controller: u8,
-mask: u8,
-status: u8,
-oam_address: u8,
-oam_data: u8,
-scroll: u8,
-address: u8,
-data: u8,
-oam_dma: u8,*/
-
-use std::ops::Add;
-
 use crate::bus::Mirroring;
 
-#[derive(Debug)]
 pub struct Ppu {
     chr: Vec<u8>,
     vram: [u8; 2048],
@@ -30,7 +17,7 @@ pub struct Ppu {
     horizontal_scroll: u8,
     on_vert_scroll: bool,
 
-    scanline: u16,
+    pub scanline: u16,
     cycles: usize,
     nmi_triggered: bool,
 }
@@ -47,7 +34,6 @@ const REG_OAM_DMA: u16 = 0x4014;
 
 const PPU_BUS_MIRROR_MASK: u16 = 0x2007;
 
-#[derive(Debug)]
 struct AddrReg {
     msb: u8,
     lsb: u8,
@@ -96,7 +82,6 @@ impl AddrReg {
     }
 }
 
-#[derive(Debug)]
 struct ControllerReg {
     nametable1: bool,
     nametable2: bool,
@@ -137,7 +122,6 @@ impl ControllerReg {
     }
 }
 
-#[derive(Debug)]
 struct MaskReg {
     greyscale: bool,
     left_background: bool,
@@ -226,7 +210,7 @@ impl Ppu {
 
     /// Progress by N clock cycles
     /// Returns line number to be rendered
-    pub fn tick(&mut self, cycles: u8) -> Option<u16> {
+    pub fn tick(&mut self, cycles: u8) -> bool {
         self.cycles += cycles as usize;
         if self.cycles >= Ppu::CYCLES_PER_LINE {
             self.cycles -= Ppu::CYCLES_PER_LINE;
@@ -234,7 +218,7 @@ impl Ppu {
             match self.scanline {
                 0..=Ppu::LAST_RENDER_LINE => {
                     self.scanline += 1;
-                    return Some(self.scanline-1);
+                    return true;
                 }
                 Ppu::VBLANK_START_LINE => {
                     self.scanline += 1;
@@ -251,7 +235,7 @@ impl Ppu {
                 _ => self.scanline += 1,
             }
         }
-        None
+        return false;
     }
 
     pub fn nmi_triggered(&mut self) -> bool {

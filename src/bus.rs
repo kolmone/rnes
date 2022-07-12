@@ -1,11 +1,12 @@
 use crate::ppu::Ppu;
 
-#[derive(Debug)]
-pub struct Bus {
+pub struct Bus<'call> {
     ram: [u8; 0x800],
     prg: Vec<u8>,
     ppu: Ppu,
     cycles: usize,
+
+    render_callback: Box<dyn FnMut(&Ppu) + 'call>,
 }
 
 #[derive(Debug, Copy, Clone)]
@@ -15,7 +16,6 @@ pub enum Mirroring {
     FourScreen,
 }
 
-#[derive(Debug)]
 pub struct Rom {
     pub prg: Vec<u8>,
     pub chr: Vec<u8>,
@@ -73,20 +73,24 @@ const ROM_START: u16 = 0x8000;
 
 const RAM_ADDR_MIRROR_MASK: u16 = 0x07FF;
 
-impl Bus {
-    pub fn new(rom: Rom) -> Self {
+impl<'call> Bus<'call> {
+    pub fn new<F>(rom: Rom, render_callback: F) -> Self
+    where
+        F: FnMut(&Ppu) + 'call,
+    {
         Self {
             ram: [0; 0x800],
             prg: rom.prg,
             ppu: Ppu::new(rom.chr, rom.mirroring),
             cycles: 0,
+            render_callback: Box::from(render_callback),
         }
     }
 
     pub fn tick(&mut self, cycles: u8) {
         self.cycles += cycles as usize;
-        if let Some(scanline) = self.ppu.tick(cycles * 3) {
-            println!("Rendering line {}", scanline)
+        if self.ppu.tick(cycles * 3) {
+            (self.render_callback)(&self.ppu);
         }
     }
 

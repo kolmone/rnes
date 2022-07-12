@@ -12,7 +12,6 @@ pub enum AddressingMode {
     NoneAddressing,
 }
 
-#[derive(Debug)]
 pub struct Instruction {
     pub opcode: u8,
     pub mnemonic: &'static str,

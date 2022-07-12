@@ -1,13 +1,14 @@
 mod bus;
 mod cpu;
-mod frame;
 mod ppu;
+mod renderer;
 
 use bus::{Bus, Rom};
 use core::panic;
 use cpu::Cpu;
-use frame::Frame;
+use ppu::Ppu;
 use rand::Rng;
+use renderer::Renderer;
 use sdl2::{
     event::Event,
     keyboard::Keycode,
@@ -106,8 +107,11 @@ fn run_snake() {
     let mut screen_state = [0 as u8; 32 * 3 * 32];
     let mut rng = rand::thread_rng();
 
+    let mut renderer = Renderer {};
     let rom: Vec<u8> = std::fs::read("snake.nes").expect("Unable to open snake.nes");
-    let bus = Bus::new(Rom::new(rom).unwrap());
+    let bus = Bus::new(Rom::new(rom).unwrap(), move |ppu: &Ppu| {
+        renderer.render_line(&ppu)
+    });
     let mut cpu = Cpu::new(bus);
     cpu.reset();
 
@@ -142,7 +146,7 @@ fn trace(cpu: &mut Cpu) {
 
 fn run_nestest() {
     let rom: Vec<u8> = std::fs::read("nestest.nes").expect("Unable to open nestest.nes");
-    let bus = Bus::new(Rom::new(rom).unwrap());
+    let bus = Bus::new(Rom::new(rom).unwrap(), |_| ());
     let mut cpu = Cpu::new(bus);
     cpu.reset();
     cpu.program_counter = 0xc000;
@@ -159,7 +163,7 @@ fn run_nestest() {
 
 fn run_rom(file: &str) {
     let rom: Vec<u8> = std::fs::read(file).expect("Unable to open nestest.nes");
-    let bus = Bus::new(Rom::new(rom).unwrap());
+    let bus = Bus::new(Rom::new(rom).unwrap(), |_| ());
     let mut cpu = Cpu::new(bus);
     cpu.reset();
     cpu.run_with_callback(move |cpu| {
@@ -190,7 +194,7 @@ fn draw_tiles(rom: &str) {
     let rom: Vec<u8> = std::fs::read(rom).expect("Unable to open ROM");
     let rom = Rom::new(rom).unwrap();
 
-    let tile_frame = Frame::show_tile(&rom.chr, 1, 8);
+    // let tile_frame = Frame::show_tile(&rom.chr, 1, 8);
 
     // let bus = Bus::new(Rom::new(rom).unwrap());
     // let mut cpu = Cpu::new(bus);
@@ -210,18 +214,18 @@ fn draw_tiles(rom: &str) {
     //     std::thread::sleep(std::time::Duration::new(0, 70_000));
     // });
 
-    texture.update(None, &tile_frame.data, 256 * 3).unwrap();
-    canvas.copy(&texture, None, None).unwrap();
-    canvas.present();
+    // texture.update(None, &tile_frame.data, 256 * 3).unwrap();
+    // canvas.copy(&texture, None, None).unwrap();
+    // canvas.present();
 
-    loop {
-        for event in event_pump.poll_iter() {
-            match event {
-                Event::Quit { .. } => std::process::exit(0),
-                _ => { /* do nothing */ }
-            }
-        }
-    }
+    // loop {
+    //     for event in event_pump.poll_iter() {
+    //         match event {
+    //             Event::Quit { .. } => std::process::exit(0),
+    //             _ => { /* do nothing */ }
+    //         }
+    //     }
+    // }
 }
 
 fn main() {
