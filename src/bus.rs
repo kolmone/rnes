@@ -85,7 +85,9 @@ impl Bus {
 
     pub fn tick(&mut self, cycles: u8) {
         self.cycles += cycles as usize;
-        self.ppu.tick(cycles * 3);
+        if let Some(scanline) = self.ppu.tick(cycles * 3) {
+            println!("Rendering line {}", scanline)
+        }
     }
 
     pub fn get_nmi_state(&mut self) -> bool {

@@ -196,6 +196,12 @@ impl From<StatusReg> for u8 {
 }
 
 impl Ppu {
+    const CYCLES_PER_LINE: usize = 341;
+
+    const LINES_PER_FRAME: u16 = 262;
+    const LAST_RENDER_LINE: u16 = 239;
+    const VBLANK_START_LINE: u16 = 241;
+
     pub fn new(chr: Vec<u8>, mirroring: Mirroring) -> Self {
         Self {
             chr,
@@ -218,24 +224,34 @@ impl Ppu {
         }
     }
 
-    pub fn tick(&mut self, cycles: u8) {
+    /// Progress by N clock cycles
+    /// Returns line number to be rendered
+    pub fn tick(&mut self, cycles: u8) -> Option<u16> {
         self.cycles += cycles as usize;
-        if self.cycles >= 341 {
-            self.cycles = self.cycles - 341;
-            self.scanline += 1;
+        if self.cycles >= Ppu::CYCLES_PER_LINE {
+            self.cycles -= Ppu::CYCLES_PER_LINE;
 
-            if self.scanline == 241 {
-                self.status.vblank = true;
-                if self.controller.generate_nmi {
-                    self.nmi_triggered = true;
+            match self.scanline {
+                0..=Ppu::LAST_RENDER_LINE => {
+                    self.scanline += 1;
+                    return Some(self.scanline-1);
                 }
-            }
-
-            if self.scanline >= 262 {
-                self.scanline = 0;
-                self.status.vblank = false;
+                Ppu::VBLANK_START_LINE => {
+                    self.scanline += 1;
+                    self.status.vblank = true;
+                    if self.controller.generate_nmi {
+                        self.nmi_triggered = true;
+                    }
+                }
+                Ppu::LINES_PER_FRAME => {
+                    self.scanline = 0;
+                    self.status.vblank = false;
+                }
+                // 240, 242 - 260
+                _ => self.scanline += 1,
             }
         }
+        None
     }
 
     pub fn nmi_triggered(&mut self) -> bool {

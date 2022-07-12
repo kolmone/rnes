@@ -112,7 +112,7 @@ fn run_snake() {
     cpu.reset();
 
     cpu.run_with_callback(move |cpu| {
-        trace(cpu);
+        // trace(cpu);
         handle_user_input(cpu, &mut event_pump);
         cpu.bus.write(0x00FE, rng.gen_range(1..16));
 
