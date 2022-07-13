@@ -1,4 +1,7 @@
+mod regs;
+
 use crate::bus::Mirroring;
+use regs::{AddrReg, ControllerReg, MaskReg, StatusReg};
 
 pub struct Ppu {
     chr: Vec<u8>,
@@ -30,154 +33,8 @@ const REG_OAM_DATA: u16 = 0x2004;
 const REG_SCROLL: u16 = 0x2005;
 const REG_ADDR: u16 = 0x2006;
 const REG_DATA: u16 = 0x2007;
-const REG_OAM_DMA: u16 = 0x4014;
 
 const PPU_BUS_MIRROR_MASK: u16 = 0x2007;
-
-struct AddrReg {
-    msb: u8,
-    lsb: u8,
-    on_msb: bool,
-}
-
-impl AddrReg {
-    pub fn new() -> Self {
-        Self {
-            msb: 0,
-            lsb: 0,
-            on_msb: true,
-        }
-    }
-
-    pub fn write(&mut self, data: u8) {
-        if self.on_msb {
-            self.msb = data;
-            self.sanitize();
-        } else {
-            self.lsb = data;
-        }
-
-        self.on_msb = !self.on_msb;
-    }
-
-    pub fn increment(&mut self, inc: u8) {
-        let old_lsb = self.lsb;
-        self.lsb = old_lsb.wrapping_add(inc);
-        if self.lsb < old_lsb {
-            self.msb = self.msb.wrapping_add(1);
-        }
-        self.sanitize();
-    }
-
-    pub fn get(&self) -> u16 {
-        (self.msb as u16) << 8 | (self.lsb as u16)
-    }
-
-    pub fn reset_latch(&mut self) {
-        self.on_msb = true;
-    }
-
-    fn sanitize(&mut self) {
-        self.msb &= 0x3F;
-    }
-}
-
-struct ControllerReg {
-    nametable1: bool,
-    nametable2: bool,
-    increment: bool,
-    sprite_addr: bool,
-    background_addr: bool,
-    sprite_size: bool,
-    ppu_master: bool,
-    generate_nmi: bool,
-}
-
-impl From<u8> for ControllerReg {
-    fn from(controller: u8) -> Self {
-        Self {
-            nametable1: controller & 0x1 != 0,
-            nametable2: controller & 0x2 != 0,
-            increment: controller & 0x4 != 0,
-            sprite_addr: controller & 0x8 != 0,
-            background_addr: controller & 0x10 != 0,
-            sprite_size: controller & 0x20 != 0,
-            ppu_master: controller & 0x40 != 0,
-            generate_nmi: controller & 0x80 != 0,
-        }
-    }
-}
-
-impl ControllerReg {
-    fn new() -> Self {
-        0.into()
-    }
-
-    fn get_increment(&self) -> u8 {
-        if self.increment {
-            32
-        } else {
-            1
-        }
-    }
-}
-
-struct MaskReg {
-    greyscale: bool,
-    left_background: bool,
-    left_sprites: bool,
-    show_background: bool,
-    show_sprites: bool,
-    emphasize_red: bool,
-    emphasize_green: bool,
-    emphasize_blue: bool,
-}
-
-impl From<u8> for MaskReg {
-    fn from(mask: u8) -> Self {
-        Self {
-            greyscale: mask & 0x1 != 0,
-            left_background: mask & 0x2 != 0,
-            left_sprites: mask & 0x4 != 0,
-            show_background: mask & 0x8 != 0,
-            show_sprites: mask & 0x10 != 0,
-            emphasize_red: mask & 0x20 != 0,
-            emphasize_green: mask & 0x40 != 0,
-            emphasize_blue: mask & 0x80 != 0,
-        }
-    }
-}
-
-impl MaskReg {
-    fn new() -> Self {
-        0.into()
-    }
-}
-
-#[derive(Debug, Copy, Clone)]
-struct StatusReg {
-    sprite_overflow: bool,
-    sprite0_hit: bool,
-    vblank: bool,
-}
-
-impl StatusReg {
-    fn new() -> Self {
-        Self {
-            sprite_overflow: false,
-            sprite0_hit: false,
-            vblank: false,
-        }
-    }
-}
-
-impl From<StatusReg> for u8 {
-    fn from(status: StatusReg) -> Self {
-        (status.sprite_overflow as u8) << 5
-            | (status.sprite0_hit as u8) << 6
-            | (status.vblank as u8) << 7
-    }
-}
 
 impl Ppu {
     const CYCLES_PER_LINE: usize = 341;
@@ -291,13 +148,13 @@ impl Ppu {
                 self.data_buf = self.chr[addr as usize];
                 old_buf
             }
-            0x2000..=0x3EFF => {
+            0x2000..=0x3EFF | 0x3F20..=0x3FFF => {
                 self.data_buf = self.vram[self.mirrored_vram_addr(addr) as usize];
                 old_buf
             }
-            0x3F00..=0x3FFF => {
+            0x3F00..=0x3F1F => {
                 self.data_buf = self.vram[self.mirrored_vram_addr(addr) as usize];
-                self.palette[(addr - 0x3F00) as usize]
+                self.palette[self.palette_idx(addr)]
             }
             _ => panic!("Data read from unsupported PPU address at 0x{:x}", addr),
         }
@@ -309,8 +166,10 @@ impl Ppu {
 
         match addr {
             0..=0x1FFF => panic!("Write to CHR ROM address {:X}", addr),
-            0x2000..=0x2FFF => self.vram[self.mirrored_vram_addr(addr) as usize] = data,
-            0x3F00..=0x3FFF => self.palette[(addr - 0x3F00) as usize] = data,
+            0x2000..=0x3EFF | 0x3F20..=0x3FFF => {
+                self.vram[self.mirrored_vram_addr(addr) as usize] = data
+            }
+            0x3F00..=0x3F1F => self.palette[self.palette_idx(addr)] = data,
             _ => panic!("Data write to unsupported PPU address at 0x{:x}", addr),
         }
     }
@@ -347,6 +206,38 @@ impl Ppu {
             (Mirroring::Horizontal, 3) => vram_idx - 0x800,
             _ => vram_idx,
         }
+    }
+
+    fn palette_idx(&self, addr: u16) -> usize {
+        let addr = if addr >= 0x3f10 && addr % 4 == 0 {
+            addr - 0x3f10
+        } else {
+            addr - 0x3f00
+        };
+        addr as usize
+    }
+
+    pub fn get_background_color(&self) -> u8 {
+        self.palette[0]
+    }
+
+    pub fn get_background_palette(&self, palette: u8) -> (u8, u8, u8, u8) {
+        let idx = (1 + 4 * palette) as usize;
+        (
+            self.palette[0],
+            self.palette[idx],
+            self.palette[idx + 1],
+            self.palette[idx + 3],
+        )
+    }
+
+    pub fn get_sprite_palette(&self, palette: u8) -> (u8, u8, u8) {
+        let idx = (17 + 4 * palette) as usize;
+        (
+            self.palette[idx],
+            self.palette[idx + 1],
+            self.palette[idx + 3],
+        )
     }
 }
 

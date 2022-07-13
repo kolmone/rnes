@@ -5,7 +5,7 @@ pub struct Frame {
 impl Frame {}
 
 #[rustfmt::skip]
-pub static SYSTEM_PALLETTE: [(u8,u8,u8); 64] = [
+pub static SYSTEM_PALETTE: [(u8,u8,u8); 64] = [
    (0x80, 0x80, 0x80), (0x00, 0x3D, 0xA6), (0x00, 0x12, 0xB0), (0x44, 0x00, 0x96), (0xA1, 0x00, 0x5E),
    (0xC7, 0x00, 0x28), (0xBA, 0x06, 0x00), (0x8C, 0x17, 0x00), (0x5C, 0x2F, 0x00), (0x10, 0x45, 0x00),
    (0x05, 0x4A, 0x00), (0x00, 0x47, 0x2E), (0x00, 0x41, 0x66), (0x00, 0x00, 0x00), (0x05, 0x05, 0x05),
@@ -57,10 +57,10 @@ impl Frame {
                 upper = upper >> 1;
                 lower = lower >> 1;
                 let rgb = match value {
-                    0 => SYSTEM_PALLETTE[0x01],
-                    1 => SYSTEM_PALLETTE[0x23],
-                    2 => SYSTEM_PALLETTE[0x27],
-                    3 => SYSTEM_PALLETTE[0x30],
+                    0 => SYSTEM_PALETTE[0x01],
+                    1 => SYSTEM_PALETTE[0x23],
+                    2 => SYSTEM_PALETTE[0x27],
+                    3 => SYSTEM_PALETTE[0x30],
                     _ => panic!("can't be"),
                 };
                 frame.set_pixel(x, y, rgb)

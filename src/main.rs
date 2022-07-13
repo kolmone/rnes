@@ -107,7 +107,7 @@ fn run_snake() {
     let mut screen_state = [0 as u8; 32 * 3 * 32];
     let mut rng = rand::thread_rng();
 
-    let mut renderer = Renderer {};
+    let mut renderer = Renderer::new();
     let rom: Vec<u8> = std::fs::read("snake.nes").expect("Unable to open snake.nes");
     let bus = Bus::new(Rom::new(rom).unwrap(), move |ppu: &Ppu| {
         renderer.render_line(&ppu)
@@ -162,13 +162,19 @@ fn run_nestest() {
 }
 
 fn run_rom(file: &str) {
-    let rom: Vec<u8> = std::fs::read(file).expect("Unable to open nestest.nes");
-    let bus = Bus::new(Rom::new(rom).unwrap(), |_| ());
-    let mut cpu = Cpu::new(bus);
-    cpu.reset();
-    cpu.run_with_callback(move |cpu| {
-        trace(cpu);
+    let rom: Vec<u8> = std::fs::read(file).expect("Unable to open rom file!");
+
+    let mut renderer = Renderer::new();
+    let bus = Bus::new(Rom::new(rom).unwrap(), move |ppu: &Ppu| {
+        renderer.render_line(&ppu)
     });
+    let mut cpu = Cpu::new(bus);
+
+    cpu.reset();
+    // cpu.run_with_callback(move |cpu| {
+    //     trace(cpu);
+    // });
+    cpu.run_with_callback(|_| ());
 }
 
 fn draw_tiles(rom: &str) {
