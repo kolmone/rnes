@@ -1,8 +1,11 @@
 mod frame;
 
-use crate::{Ppu};
+use crate::Ppu;
 use frame::Frame;
-use sdl2::{render::{Texture, Canvas}, video::Window};
+use sdl2::{
+    render::{Canvas, Texture},
+    video::Window,
+};
 
 pub struct Renderer {
     frame: Frame,
@@ -11,13 +14,13 @@ pub struct Renderer {
 impl Renderer {
     pub fn new() -> Self {
         Self {
-            frame: Frame::new()
+            frame: Frame::new(),
         }
     }
 
     pub fn render_line(&mut self, ppu: &Ppu, canvas: &mut Canvas<Window>, texture: &mut Texture) {
         let y = ppu.scanline - 1;
-        println!("Rendering line {}", y);
+        // println!("Rendering line {}", y);
 
         let mut x = 0;
 
@@ -39,7 +42,7 @@ impl Renderer {
         }
 
         if y == 239 {
-            println!("Presenting screen");
+            // println!("Presenting screen");
             // self.frame.print();
             texture.update(None, &self.frame.data, 256 * 3).unwrap();
             canvas.copy(&texture, None, None).unwrap();

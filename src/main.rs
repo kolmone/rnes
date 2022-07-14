@@ -13,27 +13,28 @@ use sdl2::{
     event::Event,
     keyboard::Keycode,
     pixels::{Color, PixelFormatEnum},
-    EventPump
+    EventPump,
 };
-use std::{env, time::Duration, thread::sleep};
+use std::{env, thread::sleep, time::Duration};
 
-
-fn run_rom(file: &str) {
+fn run_rom(file: &str, do_trace: bool) {
     let sdl = sdl2::init().unwrap();
-    let window = sdl.video().unwrap()
-    .window("N3S", 256 as u32, 240 as u32)
-    .position_centered()
-    .build()
-    .unwrap();
+    let window = sdl
+        .video()
+        .unwrap()
+        .window("N3S", 256 as u32, 240 as u32)
+        .position_centered()
+        .build()
+        .unwrap();
     let mut canvas = window.into_canvas().present_vsync().build().unwrap();
 
     let tex_creator = canvas.texture_creator();
     let mut texture = tex_creator
-        .create_texture_target(PixelFormatEnum::RGB24, 32, 32)
+        .create_texture_target(PixelFormatEnum::RGB24, 256, 240)
         .unwrap();
 
     let mut event_pump = sdl.event_pump().unwrap();
-    
+
     let rom: Vec<u8> = std::fs::read(file).expect("Unable to open rom file!");
 
     let mut renderer = Renderer::new();
@@ -44,8 +45,10 @@ fn run_rom(file: &str) {
 
     cpu.reset();
     cpu.run_with_callback(move |cpu| {
-        // trace(cpu);
-        sleep(Duration::new(0, 1000));
+        if (do_trace) {
+            trace(cpu);
+        }
+        // sleep(Duration::new(0, 1000));
         for event in event_pump.poll_iter() {
             match event {
                 Event::Quit { .. } => std::process::exit(0),
@@ -54,7 +57,6 @@ fn run_rom(file: &str) {
         }
     });
 }
-
 
 fn handle_user_input(cpu: &mut Cpu, event_pump: &mut EventPump) {
     for event in event_pump.poll_iter() {
@@ -180,6 +182,16 @@ fn trace(cpu: &mut Cpu) {
         status,
         cpu.stack_pointer
     );
+    // println!(
+    //     "{:04X}  {:02X}  A:{:02X} X:{:02X} Y:{:02X} P:{:02X} SP:{:02X}",
+    //     cpu.program_counter,
+    //     cpu.bus.read(cpu.program_counter),
+    //     cpu.register_a,
+    //     cpu.register_x,
+    //     cpu.register_y,
+    //     status,
+    //     cpu.stack_pointer
+    // );
 }
 
 fn run_nestest() {
@@ -199,65 +211,28 @@ fn run_nestest() {
     });
 }
 
-fn draw_tiles(rom: &str) {
-    let sdl_context = sdl2::init().unwrap();
-    let video_subsystem = sdl_context.video().unwrap();
-    let window = video_subsystem
-        .window("N3S", (256) as u32, (240) as u32)
-        .position_centered()
-        .build()
-        .unwrap();
-
-    let mut canvas = window.into_canvas().present_vsync().build().unwrap();
-    let mut event_pump = sdl_context.event_pump().unwrap();
-
-    let tex_creator = canvas.texture_creator();
-    let mut texture = tex_creator
-        .create_texture_target(PixelFormatEnum::RGB24, 32, 32)
-        .unwrap();
-
-    let mut screen_state = [0 as u8; 32 * 3 * 32];
-    let mut rng = rand::thread_rng();
-
-    let rom: Vec<u8> = std::fs::read(rom).expect("Unable to open ROM");
-    let rom = Rom::new(rom).unwrap();
-
-    // let tile_frame = Frame::show_tile(&rom.chr, 1, 8);
-
-    // let bus = Bus::new(Rom::new(rom).unwrap());
-    // let mut cpu = Cpu::new(bus);
-    // cpu.reset();
-
-        // texture.update(None, &tile_frame.data, 256 * 3).unwrap();
-        // canvas.copy(&texture, None, None).unwrap();
-        // canvas.present();
-
-    // loop {
-    //     for event in event_pump.poll_iter() {
-    //         match event {
-    //             Event::Quit { .. } => std::process::exit(0),
-    //             _ => { /* do nothing */ }
-    //         }
-    //     }
-    // }
-}
-
 fn main() {
     let args: Vec<String> = env::args().collect();
 
-    if args.len() != 2 {
-        println!("Must provide exactly one parameter! Try:");
+    if args.len() < 2 {
+        println!("Must provide at least one parameter! Try:");
         println!("  snake          -- runs a snake game");
         println!("  nestest        -- runs a snake game");
         println!("  <file>         -- runs given rom");
         return;
     }
 
+    let trace = if args.len() > 2 && &args[2] == "--trace" {
+        true
+    } else {
+        false
+    };
+
     if args[1] == "snake".to_owned() {
         run_snake();
     } else if args[1] == "nestest".to_owned() {
         run_nestest();
     } else {
-        run_rom(&args[1]);
+        run_rom(&args[1], trace);
     }
 }

@@ -121,7 +121,7 @@ impl<'call> Bus<'call> {
             RAM_START..=RAM_END => self.ram[(addr & RAM_ADDR_MIRROR_MASK) as usize] = data,
             PPU_REGISTERS_START..=PPU_REGISTERS_END => self.ppu.write(addr, data),
             OAM_DMA_ADDR => self.oam_dma(data),
-            ROM_START.. => panic!("Write to ROM space"),
+            ROM_START.. => println!("Write to ROM space at address 0x{:X}", addr),
             _ => println!("Write to unknown address 0x{:X}", addr),
         }
     }
@@ -142,12 +142,11 @@ impl<'call> Bus<'call> {
     }
 
     fn oam_dma(&mut self, page: u8) {
-        println!("Performing OAM DMA");
+        println!("Performing OAM DMA to address {:x}", self.ppu.oam_addr);
         let start_addr = (page as u16) << 8;
         for i in 0..256 {
             let oam_data = self.read(start_addr + i);
             self.write(0x2004, oam_data);
         }
-        panic!("OAM DMA done!");
     }
 }

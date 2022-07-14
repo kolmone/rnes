@@ -14,7 +14,7 @@ pub struct Ppu {
     addr: AddrReg,
     mask: MaskReg,
     status: StatusReg,
-    oam_addr: u8,
+    pub oam_addr: u8,
     data_buf: u8, // Buffered RAM/ROM data
     vertical_scroll: u8,
     horizontal_scroll: u8,
@@ -166,9 +166,7 @@ impl Ppu {
 
         match addr {
             0..=0x1FFF => panic!("Write to CHR ROM address {:X}", addr),
-            0x2000..=0x3EFF | 0x3F20..=0x3FFF => {
-                self.vram[self.mirrored_vram_addr(addr)] = data
-            }
+            0x2000..=0x3EFF | 0x3F20..=0x3FFF => self.vram[self.mirrored_vram_addr(addr)] = data,
             0x3F00..=0x3F1F => self.palette[self.palette_idx(addr)] = data,
             _ => panic!("Data write to unsupported PPU address at 0x{:x}", addr),
         }
@@ -244,13 +242,13 @@ impl Ppu {
 
     /// Get pointer to CHR ROM for the tile at specific x index on given scanline
     pub fn get_tile_idx(&self, scanline: u16, tile_num: u8) -> u8 {
-        let vram_idx = scanline/8*32 + (tile_num as u16);
+        let vram_idx = scanline / 8 * 32 + (tile_num as u16);
         let vram_base = 0x2000 + (self.controller.get_base_nametable() as u16) * 0x400;
         self.vram[self.mirrored_vram_addr(vram_base | vram_idx)]
     }
 
     /// Get one row of a tile's pixel data (2 bits per pixel = 16 bits)
-    /// 
+    ///
     /// DCBA98 76543210
     /// ---------------
     /// 0HRRRR CCCCPTTT
@@ -267,7 +265,7 @@ impl Ppu {
         let background_base = self.controller.background_half as usize * 0x1000;
         let tile_ptr = background_base + (tile_idx as usize) * 16 + row as usize;
         let mut lower_bits = self.chr[tile_ptr];
-        let mut upper_bits = self.chr[tile_ptr+8];
+        let mut upper_bits = self.chr[tile_ptr + 8];
 
         let mut values = [0; 8];
         for i in 0..8 {
