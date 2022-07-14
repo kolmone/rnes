@@ -1,5 +1,7 @@
 mod regs;
 
+use core::panic;
+
 use crate::bus::Mirroring;
 use regs::{AddrReg, ControllerReg, MaskReg, StatusReg};
 
@@ -227,7 +229,7 @@ impl Ppu {
             self.palette[0],
             self.palette[idx],
             self.palette[idx + 1],
-            self.palette[idx + 3],
+            self.palette[idx + 2],
         )
     }
 
@@ -244,7 +246,7 @@ impl Ppu {
     pub fn get_tile_idx(&self, scanline: u16, tile_num: u8) -> u8 {
         let vram_idx = scanline / 8 * 32 + (tile_num as u16);
         let vram_base = 0x2000 + (self.controller.get_base_nametable() as u16) * 0x400;
-        self.vram[self.mirrored_vram_addr(vram_base | vram_idx)]
+        self.vram[self.mirrored_vram_addr(vram_base + vram_idx)]
     }
 
     /// Get one row of a tile's pixel data (2 bits per pixel = 16 bits)
@@ -258,7 +260,7 @@ impl Ppu {
     /// ||++++---------- R: Tile row
     /// |+-------------- H: Half of pattern table (0: "left"; 1: "right")
     /// +--------------- 0: Pattern table is at $0000-$1FFF
-    pub fn get_tile_row_data(&self, scanline: u16, tile_num: u8) -> [u8; 8] {
+    pub fn get_tile_row_data(&self, scanline: u16, tile_num: u8) -> ([u8; 8], u8) {
         let tile_idx = self.get_tile_idx(scanline, tile_num);
         let row = scanline % 8;
 
@@ -275,7 +277,26 @@ impl Ppu {
             upper_bits >>= 1;
         }
 
-        values
+        (values, self.get_attribute(scanline, tile_num))
+    }
+
+    fn get_attribute(&self, scanline: u16, tile_num: u8) -> u8 {
+        let attribute_idx = self.get_attribute_idx(scanline, tile_num);
+        let vram_base = 0x23c0 + (self.controller.get_base_nametable() as u16) * 0x400;
+        let attribute = self.vram[self.mirrored_vram_addr(vram_base + attribute_idx)];
+
+        match ((tile_num / 2) % 2, (scanline / 16) % 2) {
+            (0, 0) => (attribute >> 0) & 0x03, // top left
+            (1, 0) => (attribute >> 2) & 0x03, // top right
+            (0, 1) => (attribute >> 4) & 0x03, // bottom left
+            (1, 1) => (attribute >> 6) & 0x03, // bottom right
+            _ => panic!("not reachable"),
+        }
+    }
+
+    // Each attribute byte maps to a 32x32 pixel area
+    fn get_attribute_idx(&self, scanline: u16, tile_num: u8) -> u16 {
+        scanline / 32 * 8 + (tile_num / 4) as u16
     }
 }
 
@@ -463,5 +484,15 @@ mod test {
 
         assert_eq!(ppu.vertical_scroll, 0x17);
         assert_eq!(ppu.horizontal_scroll, 0x34);
+    }
+
+    #[test]
+    fn test_attribute_indexing() {
+        let mut ppu = Ppu::new(vec![0; 0], Mirroring::Vertical);
+
+        assert_eq!(ppu.get_attribute_idx(0, 0), 0);
+        assert_eq!(ppu.get_attribute_idx(0, 3), 0);
+        assert_eq!(ppu.get_attribute_idx(31, 4), 1);
+        assert_eq!(ppu.get_attribute_idx(32, 3), 8);
     }
 }
