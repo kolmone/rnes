@@ -3,6 +3,8 @@ mod instr;
 use crate::bus::Bus;
 use instr::AddressingMode;
 
+use instr::Instruction;
+
 pub struct Cpu<'a> {
     pub register_a: u8,
     pub register_x: u8,
@@ -11,6 +13,7 @@ pub struct Cpu<'a> {
     pub stack_pointer: u8,
     pub status: StatusFlags,
     pub bus: Bus<'a>,
+    pub mnemonic: String,
 }
 
 #[derive(Debug, Copy, Clone)]
@@ -86,6 +89,7 @@ impl<'a> Cpu<'a> {
                 negative: false,
             },
             bus,
+            mnemonic: "".to_owned(),
         }
     }
 
@@ -479,7 +483,8 @@ impl<'a> Cpu<'a> {
 
     fn rti(&mut self) {
         self.status = self.pull_stack().into();
-        self.program_counter = self.pull_stack_u16(); //.wrapping_add(1);
+        self.program_counter = self.pull_stack_u16();
+        println!("Returning from exception");
     }
 
     fn rts(&mut self) {
@@ -588,12 +593,15 @@ impl<'a> Cpu<'a> {
     }
 
     fn nmi(&mut self) {
+        println!("In NMI");
         self.push_stack_u16(self.program_counter);
         self.push_stack(self.status.into());
         self.status.irq_disable = true;
 
         self.bus.tick(2);
-        self.program_counter = self.bus.read_u16(0xFFFA);
+        let target = self.bus.read_u16(0xFFFA);
+        println!("NMI jumping to 0x{:x}", target);
+        self.program_counter = target;
     }
 
     pub fn run_with_callback<F>(&mut self, mut callback: F)
@@ -601,15 +609,13 @@ impl<'a> Cpu<'a> {
         F: FnMut(&mut Cpu),
     {
         loop {
-            callback(self);
 
             let op = self.bus.read(self.program_counter);
 
             let instruction = instr::INSTRUCTIONS.iter().find(|x| x.opcode == op).unwrap();
-            // println!(
-            //     "Executing at address 0x{:x}: {:?}",
-            //     self.program_counter, instruction
-            // );
+            self.mnemonic = instruction.mnemonic.to_owned();
+
+            callback(self);
 
             self.program_counter += 1;
 

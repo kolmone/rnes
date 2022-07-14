@@ -13,9 +13,48 @@ use sdl2::{
     event::Event,
     keyboard::Keycode,
     pixels::{Color, PixelFormatEnum},
-    EventPump,
+    EventPump
 };
-use std::env;
+use std::{env, time::Duration, thread::sleep};
+
+
+fn run_rom(file: &str) {
+    let sdl = sdl2::init().unwrap();
+    let window = sdl.video().unwrap()
+    .window("N3S", 256 as u32, 240 as u32)
+    .position_centered()
+    .build()
+    .unwrap();
+    let mut canvas = window.into_canvas().present_vsync().build().unwrap();
+
+    let tex_creator = canvas.texture_creator();
+    let mut texture = tex_creator
+        .create_texture_target(PixelFormatEnum::RGB24, 32, 32)
+        .unwrap();
+
+    let mut event_pump = sdl.event_pump().unwrap();
+    
+    let rom: Vec<u8> = std::fs::read(file).expect("Unable to open rom file!");
+
+    let mut renderer = Renderer::new();
+    let bus = Bus::new(Rom::new(rom).unwrap(), |ppu: &Ppu| {
+        renderer.render_line(&ppu, &mut canvas, &mut texture)
+    });
+    let mut cpu = Cpu::new(bus);
+
+    cpu.reset();
+    cpu.run_with_callback(move |cpu| {
+        // trace(cpu);
+        sleep(Duration::new(0, 1000));
+        for event in event_pump.poll_iter() {
+            match event {
+                Event::Quit { .. } => std::process::exit(0),
+                _ => { /* do nothing */ }
+            }
+        }
+    });
+}
+
 
 fn handle_user_input(cpu: &mut Cpu, event_pump: &mut EventPump) {
     for event in event_pump.poll_iter() {
@@ -107,11 +146,9 @@ fn run_snake() {
     let mut screen_state = [0 as u8; 32 * 3 * 32];
     let mut rng = rand::thread_rng();
 
-    let mut renderer = Renderer::new();
+    // let mut renderer = Renderer::new();
     let rom: Vec<u8> = std::fs::read("snake.nes").expect("Unable to open snake.nes");
-    let bus = Bus::new(Rom::new(rom).unwrap(), move |ppu: &Ppu| {
-        renderer.render_line(&ppu)
-    });
+    let bus = Bus::new(Rom::new(rom).unwrap(), |_| ());
     let mut cpu = Cpu::new(bus);
     cpu.reset();
 
@@ -126,16 +163,17 @@ fn run_snake() {
             canvas.present();
         }
 
-        std::thread::sleep(std::time::Duration::new(0, 70_000));
+        sleep(Duration::new(0, 70_000));
     });
 }
 
 fn trace(cpu: &mut Cpu) {
     let status: u8 = cpu.status.into();
     println!(
-        "{:04X}  {:02X}  A:{:02X} X:{:02X} Y:{:02X} P:{:02X} SP:{:02X}",
+        "{:04X}  {:02X}  {:3}  A:{:02X} X:{:02X} Y:{:02X} P:{:02X} SP:{:02X}",
         cpu.program_counter,
         cpu.bus.read(cpu.program_counter),
+        cpu.mnemonic,
         cpu.register_a,
         cpu.register_x,
         cpu.register_y,
@@ -159,22 +197,6 @@ fn run_nestest() {
             panic!("Tests failed with code {:x} in 0x03", cpu.bus.read(0x0003));
         }
     });
-}
-
-fn run_rom(file: &str) {
-    let rom: Vec<u8> = std::fs::read(file).expect("Unable to open rom file!");
-
-    let mut renderer = Renderer::new();
-    let bus = Bus::new(Rom::new(rom).unwrap(), move |ppu: &Ppu| {
-        renderer.render_line(&ppu)
-    });
-    let mut cpu = Cpu::new(bus);
-
-    cpu.reset();
-    // cpu.run_with_callback(move |cpu| {
-    //     trace(cpu);
-    // });
-    cpu.run_with_callback(|_| ());
 }
 
 fn draw_tiles(rom: &str) {
@@ -206,23 +228,9 @@ fn draw_tiles(rom: &str) {
     // let mut cpu = Cpu::new(bus);
     // cpu.reset();
 
-    // cpu.run_with_callback(move |cpu| {
-    //     trace(cpu);
-    //     handle_user_input(cpu, &mut event_pump);
-    //     cpu.bus.write(0x00FE, rng.gen_range(1..16));
-
-    //     if read_screen_state(cpu, &mut screen_state) {
-    //         texture.update(None, &screen_state, 32 * 3).unwrap();
-    //         canvas.copy(&texture, None, None).unwrap();
-    //         canvas.present();
-    //     }
-
-    //     std::thread::sleep(std::time::Duration::new(0, 70_000));
-    // });
-
-    // texture.update(None, &tile_frame.data, 256 * 3).unwrap();
-    // canvas.copy(&texture, None, None).unwrap();
-    // canvas.present();
+        // texture.update(None, &tile_frame.data, 256 * 3).unwrap();
+        // canvas.copy(&texture, None, None).unwrap();
+        // canvas.present();
 
     // loop {
     //     for event in event_pump.poll_iter() {

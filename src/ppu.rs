@@ -149,11 +149,11 @@ impl Ppu {
                 old_buf
             }
             0x2000..=0x3EFF | 0x3F20..=0x3FFF => {
-                self.data_buf = self.vram[self.mirrored_vram_addr(addr) as usize];
+                self.data_buf = self.vram[self.mirrored_vram_addr(addr)];
                 old_buf
             }
             0x3F00..=0x3F1F => {
-                self.data_buf = self.vram[self.mirrored_vram_addr(addr) as usize];
+                self.data_buf = self.vram[self.mirrored_vram_addr(addr)];
                 self.palette[self.palette_idx(addr)]
             }
             _ => panic!("Data read from unsupported PPU address at 0x{:x}", addr),
@@ -167,7 +167,7 @@ impl Ppu {
         match addr {
             0..=0x1FFF => panic!("Write to CHR ROM address {:X}", addr),
             0x2000..=0x3EFF | 0x3F20..=0x3FFF => {
-                self.vram[self.mirrored_vram_addr(addr) as usize] = data
+                self.vram[self.mirrored_vram_addr(addr)] = data
             }
             0x3F00..=0x3F1F => self.palette[self.palette_idx(addr)] = data,
             _ => panic!("Data write to unsupported PPU address at 0x{:x}", addr),
@@ -194,17 +194,19 @@ impl Ppu {
         self.on_vert_scroll = !self.on_vert_scroll;
     }
 
-    // Horizontal mirroring - first two 1kB areas map to first 1kB screen
-    // Vertical mirroring - first and third 1kB areas map to first 1kB screen
-    fn mirrored_vram_addr(&self, addr: u16) -> u16 {
+    /// Translates given VRAM address to actual VRAM location
+    /// This includes removing address offset and mirroring based on current mirroring scheme
+    fn mirrored_vram_addr(&self, addr: u16) -> usize {
+        // Horizontal mirroring - first two 1kB areas map to first 1kB screen
+        // Vertical mirroring - first and third 1kB areas map to first 1kB screen
         let mirror_half = addr & 0x2FFF; // 0x2000-0x3f00 -> 0x2000-0x3000
         let vram_idx = mirror_half - 0x2000; // 0x2000-0x3000 -> 0x0000-0x1000
         let table = vram_idx / 0x400; // Index of 0x400 sized table
         match (&self.mirroring, table) {
-            (Mirroring::Vertical, 2 | 3) => vram_idx - 0x800,
-            (Mirroring::Horizontal, 1 | 2) => vram_idx - 0x400,
-            (Mirroring::Horizontal, 3) => vram_idx - 0x800,
-            _ => vram_idx,
+            (Mirroring::Vertical, 2 | 3) => (vram_idx - 0x800) as usize,
+            (Mirroring::Horizontal, 1 | 2) => (vram_idx - 0x400) as usize,
+            (Mirroring::Horizontal, 3) => (vram_idx - 0x800) as usize,
+            _ => vram_idx as usize,
         }
     }
 
@@ -238,6 +240,44 @@ impl Ppu {
             self.palette[idx + 1],
             self.palette[idx + 3],
         )
+    }
+
+    /// Get pointer to CHR ROM for the tile at specific x index on given scanline
+    pub fn get_tile_idx(&self, scanline: u16, tile_num: u8) -> u8 {
+        let vram_idx = scanline/8*32 + (tile_num as u16);
+        let vram_base = 0x2000 + (self.controller.get_base_nametable() as u16) * 0x400;
+        self.vram[self.mirrored_vram_addr(vram_base | vram_idx)]
+    }
+
+    /// Get one row of a tile's pixel data (2 bits per pixel = 16 bits)
+    /// 
+    /// DCBA98 76543210
+    /// ---------------
+    /// 0HRRRR CCCCPTTT
+    /// |||||| |||||+++- T: Fine Y offset, the row number within a tile
+    /// |||||| ||||+---- P: Bit plane (0: "lower"; 1: "upper")
+    /// |||||| ++++----- C: Tile column
+    /// ||++++---------- R: Tile row
+    /// |+-------------- H: Half of pattern table (0: "left"; 1: "right")
+    /// +--------------- 0: Pattern table is at $0000-$1FFF
+    pub fn get_tile_row_data(&self, scanline: u16, tile_num: u8) -> [u8; 8] {
+        let tile_idx = self.get_tile_idx(scanline, tile_num);
+        let row = scanline % 8;
+
+        let background_base = self.controller.background_half as usize * 0x1000;
+        let tile_ptr = background_base + (tile_idx as usize) * 16 + row as usize;
+        let mut lower_bits = self.chr[tile_ptr];
+        let mut upper_bits = self.chr[tile_ptr+8];
+
+        let mut values = [0; 8];
+        for i in 0..8 {
+            values[i] = (lower_bits & 0x1) + ((upper_bits & 0x1) << 1);
+            // println!("Tile {:X} is lower: {:X} and upper: {:X}, combined: {:X}", tile_idx, lower_bits, upper_bits, values[i]);
+            lower_bits >>= 1;
+            upper_bits >>= 1;
+        }
+
+        values
     }
 }
 

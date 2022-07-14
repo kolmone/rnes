@@ -50,10 +50,10 @@ pub struct ControllerReg {
     nametable1: bool,
     nametable2: bool,
     increment: bool,
-    sprite_addr: bool,
-    background_addr: bool,
-    sprite_size: bool,
-    ppu_master: bool,
+    pub sprite_half: bool,
+    pub background_half: bool,
+    pub sprite_size: bool,
+    pub ppu_master: bool,
     pub generate_nmi: bool,
 }
 
@@ -63,8 +63,8 @@ impl From<u8> for ControllerReg {
             nametable1: controller & 0x1 != 0,
             nametable2: controller & 0x2 != 0,
             increment: controller & 0x4 != 0,
-            sprite_addr: controller & 0x8 != 0,
-            background_addr: controller & 0x10 != 0,
+            sprite_half: controller & 0x8 != 0,
+            background_half: controller & 0x10 != 0,
             sprite_size: controller & 0x20 != 0,
             ppu_master: controller & 0x40 != 0,
             generate_nmi: controller & 0x80 != 0,
@@ -83,6 +83,10 @@ impl ControllerReg {
         } else {
             1
         }
+    }
+
+    pub fn get_base_nametable(&self) -> u8 {
+        (self.nametable1 as u8) | (self.nametable2 as u8) << 1
     }
 }
 

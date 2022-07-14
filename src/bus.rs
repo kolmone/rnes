@@ -142,10 +142,12 @@ impl<'call> Bus<'call> {
     }
 
     fn oam_dma(&mut self, page: u8) {
+        println!("Performing OAM DMA");
         let start_addr = (page as u16) << 8;
         for i in 0..256 {
             let oam_data = self.read(start_addr + i);
             self.write(0x2004, oam_data);
         }
+        panic!("OAM DMA done!");
     }
 }
