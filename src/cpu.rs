@@ -484,7 +484,7 @@ impl<'a> Cpu<'a> {
     fn rti(&mut self) {
         self.status = self.pull_stack().into();
         self.program_counter = self.pull_stack_u16();
-        println!("Returning from exception");
+        // println!("Returning from exception");
     }
 
     fn rts(&mut self) {
@@ -593,14 +593,14 @@ impl<'a> Cpu<'a> {
     }
 
     fn nmi(&mut self) {
-        println!("In NMI");
+        // println!("In NMI");
         self.push_stack_u16(self.program_counter);
         self.push_stack(self.status.into());
         self.status.irq_disable = true;
 
         self.bus.tick(2);
         let target = self.bus.read_u16(0xFFFA);
-        println!("NMI jumping to 0x{:x}", target);
+        // println!("NMI jumping to 0x{:x}", target);
         self.program_counter = target;
     }
 
@@ -609,7 +609,6 @@ impl<'a> Cpu<'a> {
         F: FnMut(&mut Cpu),
     {
         loop {
-
             let op = self.bus.read(self.program_counter);
 
             let instruction = instr::INSTRUCTIONS.iter().find(|x| x.opcode == op).unwrap();

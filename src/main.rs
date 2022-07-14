@@ -22,7 +22,7 @@ fn run_rom(file: &str, do_trace: bool) {
     let window = sdl
         .video()
         .unwrap()
-        .window("N3S", 256 as u32, 240 as u32)
+        .window("N3S", 256 * 4 as u32, 240 * 4 as u32)
         .position_centered()
         .build()
         .unwrap();
