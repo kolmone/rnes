@@ -145,7 +145,8 @@ impl<'a> Cpu<'a> {
         lsb | (self.bus.read(STACK_PAGE | self.stack_pointer as u16) as u16) << 8
     }
 
-    pub fn setup(&mut self, prog: Vec<u8>) {
+    // Used for testing
+    pub fn _setup(&mut self, prog: Vec<u8>) {
         for (idx, item) in prog.iter().enumerate() {
             self.bus.write(0x600 + idx as u16, *item);
         }
@@ -588,7 +589,8 @@ impl<'a> Cpu<'a> {
         self.adc(mode);
     }
 
-    fn run(&mut self) {
+    // Used for testing
+    fn _run(&mut self) {
         self.run_with_callback(|_| {});
     }
 
@@ -741,8 +743,8 @@ mod test {
     fn test_lda_immediate() {
         let bus = dummy_bus();
         let mut cpu = Cpu::new(bus);
-        cpu.setup(vec![0xa9, 0x7F]);
-        cpu.run();
+        cpu._setup(vec![0xa9, 0x7F]);
+        cpu._run();
         assert_eq!(cpu.register_a, 0x7F);
         assert!(!cpu.status.zero);
         assert!(!cpu.status.negative);
@@ -752,8 +754,8 @@ mod test {
     fn test_lda_immediate_zero() {
         let bus = dummy_bus();
         let mut cpu = Cpu::new(bus);
-        cpu.setup(vec![0xa9, 0x00]);
-        cpu.run();
+        cpu._setup(vec![0xa9, 0x00]);
+        cpu._run();
         assert_eq!(cpu.register_a, 0x00);
         assert!(cpu.status.zero);
         assert!(!cpu.status.negative);
@@ -763,8 +765,8 @@ mod test {
     fn test_lda_immediate_neg() {
         let bus = dummy_bus();
         let mut cpu = Cpu::new(bus);
-        cpu.setup(vec![0xa9, 0xFF]);
-        cpu.run();
+        cpu._setup(vec![0xa9, 0xFF]);
+        cpu._run();
         assert_eq!(cpu.register_a, 0xFF);
         assert!(!cpu.status.zero);
         assert!(cpu.status.negative);
@@ -774,9 +776,9 @@ mod test {
     fn test_tax_a_to_x() {
         let bus = dummy_bus();
         let mut cpu = Cpu::new(bus);
-        cpu.setup(vec![0xAA]);
+        cpu._setup(vec![0xAA]);
         cpu.register_a = 0xFF;
-        cpu.run();
+        cpu._run();
         assert_eq!(cpu.register_x, 0xFF);
         assert!(!cpu.status.zero);
         assert!(cpu.status.negative);
@@ -786,9 +788,9 @@ mod test {
     fn test_inx_x_to_nonzero() {
         let bus = dummy_bus();
         let mut cpu = Cpu::new(bus);
-        cpu.setup(vec![0xE8]);
+        cpu._setup(vec![0xE8]);
         cpu.register_x = 0x56;
-        cpu.run();
+        cpu._run();
         assert_eq!(cpu.register_x, 0x57);
         assert!(!cpu.status.zero);
         assert!(!cpu.status.negative);
@@ -798,9 +800,9 @@ mod test {
     fn test_inx_x_to_negative() {
         let bus = dummy_bus();
         let mut cpu = Cpu::new(bus);
-        cpu.setup(vec![0xE8]);
+        cpu._setup(vec![0xE8]);
         cpu.register_x = 0x7F;
-        cpu.run();
+        cpu._run();
         assert_eq!(cpu.register_x, 0x80);
         assert!(!cpu.status.zero);
         assert!(cpu.status.negative);
@@ -810,9 +812,9 @@ mod test {
     fn test_inx_x_to_zero() {
         let bus = dummy_bus();
         let mut cpu = Cpu::new(bus);
-        cpu.setup(vec![0xE8]);
+        cpu._setup(vec![0xE8]);
         cpu.register_x = 0xFF;
-        cpu.run();
+        cpu._run();
         assert_eq!(cpu.register_x, 0x0);
         assert!(cpu.status.zero);
         assert!(!cpu.status.negative);
@@ -822,9 +824,9 @@ mod test {
     fn test_iny() {
         let bus = dummy_bus();
         let mut cpu = Cpu::new(bus);
-        cpu.setup(vec![0xc8]);
+        cpu._setup(vec![0xc8]);
         cpu.register_y = 0x50;
-        cpu.run();
+        cpu._run();
         assert_eq!(cpu.register_y, 0x51);
         assert!(!cpu.status.zero);
         assert!(!cpu.status.negative);
@@ -834,9 +836,9 @@ mod test {
     fn test_lda_zeropage() {
         let bus = dummy_bus();
         let mut cpu = Cpu::new(bus);
-        cpu.setup(vec![0xa5, 0x4]);
+        cpu._setup(vec![0xa5, 0x4]);
         cpu.bus.write(0x4, 0x56);
-        cpu.run();
+        cpu._run();
         assert_eq!(cpu.register_a, 0x56);
     }
 
@@ -844,11 +846,11 @@ mod test {
     fn test_lda_zeropagex() {
         let bus = dummy_bus();
         let mut cpu = Cpu::new(bus);
-        cpu.setup(vec![0xb5, 0x4]);
+        cpu._setup(vec![0xb5, 0x4]);
         cpu.register_x = 5;
         cpu.register_y = 6;
         cpu.bus.write(0x9, 0x56);
-        cpu.run();
+        cpu._run();
         assert_eq!(cpu.register_a, 0x56);
     }
 
@@ -856,11 +858,11 @@ mod test {
     fn test_lda_absolute() {
         let bus = dummy_bus();
         let mut cpu = Cpu::new(bus);
-        cpu.setup(vec![0xbd, 0x4, 0x5]);
+        cpu._setup(vec![0xbd, 0x4, 0x5]);
         cpu.register_x = 5;
         cpu.register_y = 6;
         cpu.bus.write(0x0504 + 5, 0x56);
-        cpu.run();
+        cpu._run();
         assert_eq!(cpu.register_a, 0x56);
     }
 
@@ -868,11 +870,11 @@ mod test {
     fn test_lda_absolutex() {
         let bus = dummy_bus();
         let mut cpu = Cpu::new(bus);
-        cpu.setup(vec![0xbd, 0x4, 0x5]);
+        cpu._setup(vec![0xbd, 0x4, 0x5]);
         cpu.register_x = 5;
         cpu.register_y = 6;
         cpu.bus.write(0x0504 + 5, 0x56);
-        cpu.run();
+        cpu._run();
         assert_eq!(cpu.register_a, 0x56);
     }
 
@@ -880,11 +882,11 @@ mod test {
     fn test_lda_absolutey() {
         let bus = dummy_bus();
         let mut cpu = Cpu::new(bus);
-        cpu.setup(vec![0xb9, 0x4, 0x5]);
+        cpu._setup(vec![0xb9, 0x4, 0x5]);
         cpu.register_x = 5;
         cpu.register_y = 6;
         cpu.bus.write(0x0504 + 6, 0x56);
-        cpu.run();
+        cpu._run();
         assert_eq!(cpu.register_a, 0x56);
     }
 
@@ -892,13 +894,13 @@ mod test {
     fn test_lda_indirectx() {
         let bus = dummy_bus();
         let mut cpu = Cpu::new(bus);
-        cpu.setup(vec![0xa1, 0x4]);
+        cpu._setup(vec![0xa1, 0x4]);
         cpu.register_x = 5;
         cpu.register_y = 8;
         cpu.bus.write(9, 0x23);
         cpu.bus.write(10, 0x14);
         cpu.bus.write(0x1423, 0x56);
-        cpu.run();
+        cpu._run();
         assert_eq!(cpu.register_a, 0x56);
     }
 
@@ -906,13 +908,13 @@ mod test {
     fn test_lda_indirecty() {
         let bus = dummy_bus();
         let mut cpu = Cpu::new(bus);
-        cpu.setup(vec![0xb1, 0x4]);
+        cpu._setup(vec![0xb1, 0x4]);
         cpu.register_x = 5;
         cpu.register_y = 8;
         cpu.bus.write(4, 0x23);
         cpu.bus.write(5, 0x14);
         cpu.bus.write(0x1423 + 8, 0x56);
-        cpu.run();
+        cpu._run();
         assert_eq!(cpu.register_a, 0x56);
     }
 
@@ -920,11 +922,11 @@ mod test {
     fn test_inc_zeropagex() {
         let bus = dummy_bus();
         let mut cpu = Cpu::new(bus);
-        cpu.setup(vec![0xf6, 0xFF]);
+        cpu._setup(vec![0xf6, 0xFF]);
         cpu.register_x = 5;
         cpu.register_y = 8;
         cpu.bus.write(4, 0x7f);
-        cpu.run();
+        cpu._run();
         assert_eq!(cpu.bus.read(4), 0x80);
         assert!(!cpu.status.zero);
         assert!(cpu.status.negative);
@@ -934,11 +936,11 @@ mod test {
     fn test_adc_set_carry() {
         let bus = dummy_bus();
         let mut cpu = Cpu::new(bus);
-        cpu.setup(vec![0x69, 0xa0]);
+        cpu._setup(vec![0x69, 0xa0]);
         cpu.register_a = 0xc0;
         cpu.register_x = 5;
         cpu.register_y = 8;
-        cpu.run();
+        cpu._run();
         assert_eq!(cpu.register_a, 0x60);
         assert!(!cpu.status.zero);
         assert!(!cpu.status.negative);
@@ -950,12 +952,12 @@ mod test {
     fn test_adc_overflow_with_carry() {
         let bus = dummy_bus();
         let mut cpu = Cpu::new(bus);
-        cpu.setup(vec![0x69, 0x50]);
+        cpu._setup(vec![0x69, 0x50]);
         cpu.register_a = 0x30;
         cpu.register_x = 5;
         cpu.register_y = 8;
         cpu.status.carry = true;
-        cpu.run();
+        cpu._run();
         assert_eq!(cpu.register_a, 0x81); // 80 + 48 + 1 = negative number
         assert!(!cpu.status.zero);
         assert!(cpu.status.negative);
@@ -967,9 +969,9 @@ mod test {
     fn test_and_immediate() {
         let bus = dummy_bus();
         let mut cpu = Cpu::new(bus);
-        cpu.setup(vec![0x29, 0xaa]);
+        cpu._setup(vec![0x29, 0xaa]);
         cpu.register_a = 0xf0;
-        cpu.run();
+        cpu._run();
         assert_eq!(cpu.register_a, 0xa0);
         assert!(!cpu.status.zero);
         assert!(cpu.status.negative);
@@ -979,9 +981,9 @@ mod test {
     fn test_asl_acc() {
         let bus = dummy_bus();
         let mut cpu = Cpu::new(bus);
-        cpu.setup(vec![0x0a]);
+        cpu._setup(vec![0x0a]);
         cpu.register_a = 0xAA;
-        cpu.run();
+        cpu._run();
         assert_eq!(cpu.register_a, 0x54);
         assert!(!cpu.status.zero);
         assert!(!cpu.status.negative);
@@ -992,9 +994,9 @@ mod test {
     fn test_asl_absolute() {
         let bus = dummy_bus();
         let mut cpu = Cpu::new(bus);
-        cpu.setup(vec![0x0e, 0xaa, 0x05]);
+        cpu._setup(vec![0x0e, 0xaa, 0x05]);
         cpu.bus.write(0x05aa, 0x55);
-        cpu.run();
+        cpu._run();
         assert_eq!(cpu.bus.read(0x05aa), 0xaa);
         assert!(!cpu.status.zero);
         assert!(cpu.status.negative);
@@ -1005,8 +1007,8 @@ mod test {
     fn test_bcc_carry_clear_positive() {
         let bus = dummy_bus();
         let mut cpu = Cpu::new(bus);
-        cpu.setup(vec![0x90, 0x15]);
-        cpu.run();
+        cpu._setup(vec![0x90, 0x15]);
+        cpu._run();
         // Address of next instruction (2) + jump offset (0x15) + 1 (BRK instruction)
         assert_eq!(cpu.program_counter, 0x618);
     }
@@ -1015,8 +1017,8 @@ mod test {
     fn test_bcs_bcc_carry_clear_negative_jump() {
         let bus = dummy_bus();
         let mut cpu = Cpu::new(bus);
-        cpu.setup(vec![0xB0, 0x15, 0x90, 0xFA]);
-        cpu.run();
+        cpu._setup(vec![0xB0, 0x15, 0x90, 0xFA]);
+        cpu._run();
         // Address of next instruction (2) - jump offset (0x6) + 1 (BRK instruction)
         assert_eq!(cpu.program_counter, 0x5FF);
     }
@@ -1025,9 +1027,9 @@ mod test {
     fn test_bcc_bcs_carry_set() {
         let bus = dummy_bus();
         let mut cpu = Cpu::new(bus);
-        cpu.setup(vec![0x90, 0x15, 0xB0, 0x15]);
+        cpu._setup(vec![0x90, 0x15, 0xB0, 0x15]);
         cpu.status.carry = true;
-        cpu.run();
+        cpu._run();
         // Address of next instruction (4) + jump offset (0x15) + 1 (BRK instruction)
         assert_eq!(cpu.program_counter, 0x61a);
     }
@@ -1036,8 +1038,8 @@ mod test {
     fn test_beq_bne_zero_clear() {
         let bus = dummy_bus();
         let mut cpu = Cpu::new(bus);
-        cpu.setup(vec![0xF0, 0x15, 0xD0, 0xFA]);
-        cpu.run();
+        cpu._setup(vec![0xF0, 0x15, 0xD0, 0xFA]);
+        cpu._run();
         // Address of next instruction (2) - jump offset (0x6) + 1 (BRK instruction)
         assert_eq!(cpu.program_counter, 0x5FF);
     }
@@ -1046,9 +1048,9 @@ mod test {
     fn test_bne_beq_zero_set() {
         let bus = dummy_bus();
         let mut cpu = Cpu::new(bus);
-        cpu.setup(vec![0xD0, 0x15, 0xF0, 0x15]);
+        cpu._setup(vec![0xD0, 0x15, 0xF0, 0x15]);
         cpu.status.zero = true;
-        cpu.run();
+        cpu._run();
         // Address of next instruction (4) + jump offset (0x15) + 1 (BRK instruction)
         assert_eq!(cpu.program_counter, 0x61a);
     }
@@ -1057,10 +1059,10 @@ mod test {
     fn test_bit_nonzero() {
         let bus = dummy_bus();
         let mut cpu = Cpu::new(bus);
-        cpu.setup(vec![0x24, 0x00]);
+        cpu._setup(vec![0x24, 0x00]);
         cpu.bus.write(0, 0xFF);
         cpu.register_a = 0xC0;
-        cpu.run();
+        cpu._run();
         assert!(!cpu.status.zero);
         assert!(cpu.status.negative);
         assert!(cpu.status.overflow);
@@ -1070,10 +1072,10 @@ mod test {
     fn test_bit_zero() {
         let bus = dummy_bus();
         let mut cpu = Cpu::new(bus);
-        cpu.setup(vec![0x24, 0x00]);
+        cpu._setup(vec![0x24, 0x00]);
         cpu.bus.write(0, 0xF0);
         cpu.register_a = 0x0F;
-        cpu.run();
+        cpu._run();
         assert!(cpu.status.zero);
         assert!(cpu.status.negative);
         assert!(cpu.status.overflow);
@@ -1083,8 +1085,8 @@ mod test {
     fn test_bmi_bpl_negative_clear() {
         let bus = dummy_bus();
         let mut cpu = Cpu::new(bus);
-        cpu.setup(vec![0x30, 0x15, 0x10, 0xFA]);
-        cpu.run();
+        cpu._setup(vec![0x30, 0x15, 0x10, 0xFA]);
+        cpu._run();
         // Address of next instruction (2) - jump offset (0x6) + 1 (BRK instruction)
         assert_eq!(cpu.program_counter, 0x5FF);
     }
@@ -1093,9 +1095,9 @@ mod test {
     fn test_bpl_bmi_negative_set() {
         let bus = dummy_bus();
         let mut cpu = Cpu::new(bus);
-        cpu.setup(vec![0x10, 0x15, 0x30, 0x15]);
+        cpu._setup(vec![0x10, 0x15, 0x30, 0x15]);
         cpu.status.negative = true;
-        cpu.run();
+        cpu._run();
         // Address of next instruction (4) + jump offset (0x15) + 1 (BRK instruction)
         assert_eq!(cpu.program_counter, 0x61a);
     }
@@ -1104,8 +1106,8 @@ mod test {
     fn test_bvs_bvc_overflow_clear() {
         let bus = dummy_bus();
         let mut cpu = Cpu::new(bus);
-        cpu.setup(vec![0x70, 0x15, 0x50, 0xFA]);
-        cpu.run();
+        cpu._setup(vec![0x70, 0x15, 0x50, 0xFA]);
+        cpu._run();
         // Address of next instruction (2) - jump offset (0x6) + 1 (BRK instruction)
         assert_eq!(cpu.program_counter, 0x5FF);
     }
@@ -1114,9 +1116,9 @@ mod test {
     fn test_bvc_bvs_overflow_set() {
         let bus = dummy_bus();
         let mut cpu = Cpu::new(bus);
-        cpu.setup(vec![0x50, 0x15, 0x70, 0x15]);
+        cpu._setup(vec![0x50, 0x15, 0x70, 0x15]);
         cpu.status.overflow = true;
-        cpu.run();
+        cpu._run();
         // Address of next instruction (4) + jump offset (0x15) + 1 (BRK instruction)
         assert_eq!(cpu.program_counter, 0x61a);
     }
@@ -1125,9 +1127,9 @@ mod test {
     fn test_clc() {
         let bus = dummy_bus();
         let mut cpu = Cpu::new(bus);
-        cpu.setup(vec![0x18]);
+        cpu._setup(vec![0x18]);
         cpu.status.carry = true;
-        cpu.run();
+        cpu._run();
         assert!(!cpu.status.carry);
     }
 
@@ -1135,9 +1137,9 @@ mod test {
     fn test_cld() {
         let bus = dummy_bus();
         let mut cpu = Cpu::new(bus);
-        cpu.setup(vec![0xd8]);
+        cpu._setup(vec![0xd8]);
         cpu.status.decimal = true;
-        cpu.run();
+        cpu._run();
         assert!(!cpu.status.decimal);
     }
 
@@ -1145,9 +1147,9 @@ mod test {
     fn test_cli() {
         let bus = dummy_bus();
         let mut cpu = Cpu::new(bus);
-        cpu.setup(vec![0x58]);
+        cpu._setup(vec![0x58]);
         cpu.status.irq_disable = true;
-        cpu.run();
+        cpu._run();
         assert!(!cpu.status.irq_disable);
     }
 
@@ -1155,9 +1157,9 @@ mod test {
     fn test_clv() {
         let bus = dummy_bus();
         let mut cpu = Cpu::new(bus);
-        cpu.setup(vec![0xb8]);
+        cpu._setup(vec![0xb8]);
         cpu.status.overflow = true;
-        cpu.run();
+        cpu._run();
         assert!(!cpu.status.overflow);
     }
 
@@ -1165,9 +1167,9 @@ mod test {
     fn test_cmp_immediate_a_greater() {
         let bus = dummy_bus();
         let mut cpu = Cpu::new(bus);
-        cpu.setup(vec![0xC9, 0x10]);
+        cpu._setup(vec![0xC9, 0x10]);
         cpu.register_a = 0x20;
-        cpu.run();
+        cpu._run();
         assert!(cpu.status.carry);
         assert!(!cpu.status.zero);
         assert!(!cpu.status.negative);
@@ -1177,9 +1179,9 @@ mod test {
     fn test_cmp_immediate_equal() {
         let bus = dummy_bus();
         let mut cpu = Cpu::new(bus);
-        cpu.setup(vec![0xC9, 0xc0]);
+        cpu._setup(vec![0xC9, 0xc0]);
         cpu.register_a = 0xc0;
-        cpu.run();
+        cpu._run();
         assert!(cpu.status.carry);
         assert!(cpu.status.zero);
         assert!(!cpu.status.negative);
@@ -1189,9 +1191,9 @@ mod test {
     fn test_cmp_immediate_a_less() {
         let bus = dummy_bus();
         let mut cpu = Cpu::new(bus);
-        cpu.setup(vec![0xC9, 0x20]);
+        cpu._setup(vec![0xC9, 0x20]);
         cpu.register_a = 0x10;
-        cpu.run();
+        cpu._run();
         assert!(!cpu.status.carry);
         assert!(!cpu.status.zero);
         assert!(cpu.status.negative);
@@ -1201,9 +1203,9 @@ mod test {
     fn test_cpx_immediate_x_greater() {
         let bus = dummy_bus();
         let mut cpu = Cpu::new(bus);
-        cpu.setup(vec![0xe0, 0x10]);
+        cpu._setup(vec![0xe0, 0x10]);
         cpu.register_x = 0x20;
-        cpu.run();
+        cpu._run();
         assert!(cpu.status.carry);
         assert!(!cpu.status.zero);
         assert!(!cpu.status.negative);
@@ -1213,9 +1215,9 @@ mod test {
     fn test_cpy_immediate_y_less() {
         let bus = dummy_bus();
         let mut cpu = Cpu::new(bus);
-        cpu.setup(vec![0xC0, 0x20]);
+        cpu._setup(vec![0xC0, 0x20]);
         cpu.register_y = 0x10;
-        cpu.run();
+        cpu._run();
         assert!(!cpu.status.carry);
         assert!(!cpu.status.zero);
         assert!(cpu.status.negative);
@@ -1225,11 +1227,11 @@ mod test {
     fn test_dec_zeropage() {
         let bus = dummy_bus();
         let mut cpu = Cpu::new(bus);
-        cpu.setup(vec![0xc6, 0x50]);
+        cpu._setup(vec![0xc6, 0x50]);
         cpu.register_x = 5;
         cpu.register_y = 8;
         cpu.bus.write(0x50, 0x01);
-        cpu.run();
+        cpu._run();
         assert_eq!(cpu.bus.read(0x50), 0x0);
         assert!(cpu.status.zero);
         assert!(!cpu.status.negative);
@@ -1239,9 +1241,9 @@ mod test {
     fn test_dex_zeropage() {
         let bus = dummy_bus();
         let mut cpu = Cpu::new(bus);
-        cpu.setup(vec![0xca]);
+        cpu._setup(vec![0xca]);
         cpu.register_x = 0x80;
-        cpu.run();
+        cpu._run();
         assert_eq!(cpu.register_x, 0x7F);
         assert!(!cpu.status.zero);
         assert!(!cpu.status.negative);
@@ -1251,9 +1253,9 @@ mod test {
     fn test_dey_zeropage() {
         let bus = dummy_bus();
         let mut cpu = Cpu::new(bus);
-        cpu.setup(vec![0x88]);
+        cpu._setup(vec![0x88]);
         cpu.register_y = 0x81;
-        cpu.run();
+        cpu._run();
         assert_eq!(cpu.register_y, 0x80);
         assert!(!cpu.status.zero);
         assert!(cpu.status.negative);
@@ -1263,9 +1265,9 @@ mod test {
     fn test_eor_immediate_zero() {
         let bus = dummy_bus();
         let mut cpu = Cpu::new(bus);
-        cpu.setup(vec![0x49, 0xaa]);
+        cpu._setup(vec![0x49, 0xaa]);
         cpu.register_a = 0xaa;
-        cpu.run();
+        cpu._run();
         assert_eq!(cpu.register_a, 0x00);
         assert!(cpu.status.zero);
         assert!(!cpu.status.negative);
@@ -1275,9 +1277,9 @@ mod test {
     fn test_eor_immediate_nonzero() {
         let bus = dummy_bus();
         let mut cpu = Cpu::new(bus);
-        cpu.setup(vec![0x49, 0xaa]);
+        cpu._setup(vec![0x49, 0xaa]);
         cpu.register_a = 0xa5;
-        cpu.run();
+        cpu._run();
         assert_eq!(cpu.register_a, 0x0F);
         assert!(!cpu.status.zero);
         assert!(!cpu.status.negative);
@@ -1287,8 +1289,8 @@ mod test {
     fn test_jmp_absolute() {
         let bus = dummy_bus();
         let mut cpu = Cpu::new(bus);
-        cpu.setup(vec![0x4c, 0x23, 0x01]);
-        cpu.run();
+        cpu._setup(vec![0x4c, 0x23, 0x01]);
+        cpu._run();
         assert_eq!(cpu.program_counter, 0x0124);
     }
 
@@ -1296,10 +1298,10 @@ mod test {
     fn test_jmp_indirect() {
         let bus = dummy_bus();
         let mut cpu = Cpu::new(bus);
-        cpu.setup(vec![0x6c, 0x23, 0x01]);
+        cpu._setup(vec![0x6c, 0x23, 0x01]);
         cpu.bus.write(0x123, 0x44);
         cpu.bus.write(0x124, 0x02);
-        cpu.run();
+        cpu._run();
         assert_eq!(cpu.program_counter, 0x0245);
     }
 
@@ -1308,13 +1310,13 @@ mod test {
         let bus = dummy_bus();
         let mut cpu = Cpu::new(bus);
         // First jump to some address
-        cpu.setup(vec![0x4c, 0x20, 0x04]);
+        cpu._setup(vec![0x4c, 0x20, 0x04]);
         // From there jump to subroutine
         cpu.stack_pointer = 0x8;
         cpu.bus.write(0x0420, 0x20);
         cpu.bus.write(0x0421, 0x04); // Jump target is BRK
         cpu.bus.write(0x0422, 0x06);
-        cpu.run();
+        cpu._run();
         assert_eq!(cpu.program_counter, 0x0605); // one cycle added from BRK
         assert_eq!(cpu.stack_pointer, 0x6);
         assert_eq!(cpu.bus.read(0x108), 0x04);
@@ -1325,10 +1327,10 @@ mod test {
     fn test_ldx_zeropagey() {
         let bus = dummy_bus();
         let mut cpu = Cpu::new(bus);
-        cpu.setup(vec![0xb6, 0x70]);
+        cpu._setup(vec![0xb6, 0x70]);
         cpu.register_y = 0xf;
         cpu.bus.write(0x7f, 0x90);
-        cpu.run();
+        cpu._run();
         assert_eq!(cpu.register_x, 0x90);
         assert!(!cpu.status.zero);
         assert!(cpu.status.negative);
@@ -1338,9 +1340,9 @@ mod test {
     fn test_ldy_immediate() {
         let bus = dummy_bus();
         let mut cpu = Cpu::new(bus);
-        cpu.setup(vec![0xa0, 0x00]);
+        cpu._setup(vec![0xa0, 0x00]);
         cpu.register_y = 0xff;
-        cpu.run();
+        cpu._run();
         assert_eq!(cpu.register_y, 0x00);
         assert!(cpu.status.zero);
         assert!(!cpu.status.negative);
@@ -1350,9 +1352,9 @@ mod test {
     fn test_lsr_to_zero() {
         let bus = dummy_bus();
         let mut cpu = Cpu::new(bus);
-        cpu.setup(vec![0x4a]);
+        cpu._setup(vec![0x4a]);
         cpu.register_a = 0x01;
-        cpu.run();
+        cpu._run();
         assert_eq!(cpu.register_a, 0x00);
         assert!(cpu.status.carry);
         assert!(cpu.status.zero);
@@ -1363,8 +1365,8 @@ mod test {
     fn test_nop() {
         let bus = dummy_bus();
         let mut cpu = Cpu::new(bus);
-        cpu.setup(vec![0xea, 0xea, 0xea]);
-        cpu.run();
+        cpu._setup(vec![0xea, 0xea, 0xea]);
+        cpu._run();
         assert_eq!(cpu.program_counter, 0x604);
     }
 
@@ -1372,9 +1374,9 @@ mod test {
     fn test_ora_immediate() {
         let bus = dummy_bus();
         let mut cpu = Cpu::new(bus);
-        cpu.setup(vec![0x09, 0xa2]);
+        cpu._setup(vec![0x09, 0xa2]);
         cpu.register_a = 0x55;
-        cpu.run();
+        cpu._run();
         assert_eq!(cpu.register_a, 0xf7);
         assert!(!cpu.status.zero);
         assert!(cpu.status.negative);
@@ -1384,10 +1386,10 @@ mod test {
     fn test_pha() {
         let bus = dummy_bus();
         let mut cpu = Cpu::new(bus);
-        cpu.setup(vec![0x48]);
+        cpu._setup(vec![0x48]);
         cpu.stack_pointer = 0xfc;
         cpu.register_a = 0x55;
-        cpu.run();
+        cpu._run();
         assert_eq!(cpu.bus.read(0x01fc), 0x55);
         assert_eq!(cpu.stack_pointer, 0xfb);
     }
@@ -1396,11 +1398,11 @@ mod test {
     fn test_php() {
         let bus = dummy_bus();
         let mut cpu = Cpu::new(bus);
-        cpu.setup(vec![0x08]);
+        cpu._setup(vec![0x08]);
         cpu.stack_pointer = 0x00;
         cpu.status.carry = true;
         cpu.status.negative = true;
-        cpu.run();
+        cpu._run();
         assert_eq!(cpu.bus.read(0x0100), 0xb5);
         assert_eq!(cpu.stack_pointer, 0xff);
     }
@@ -1409,10 +1411,10 @@ mod test {
     fn test_pla() {
         let bus = dummy_bus();
         let mut cpu = Cpu::new(bus);
-        cpu.setup(vec![0x68]);
+        cpu._setup(vec![0x68]);
         cpu.stack_pointer = 0xfc;
         cpu.bus.write(0x01fd, 0x55);
-        cpu.run();
+        cpu._run();
         assert_eq!(cpu.register_a, 0x55);
         assert_eq!(cpu.stack_pointer, 0xfd);
     }
@@ -1421,10 +1423,10 @@ mod test {
     fn test_plp() {
         let bus = dummy_bus();
         let mut cpu = Cpu::new(bus);
-        cpu.setup(vec![0x28]);
+        cpu._setup(vec![0x28]);
         cpu.stack_pointer = 0xff;
         cpu.bus.write(0x0100, 0x81);
-        cpu.run();
+        cpu._run();
         assert!(cpu.status.carry);
         assert!(cpu.status.negative);
         assert_eq!(cpu.stack_pointer, 0x00);
@@ -1434,10 +1436,10 @@ mod test {
     fn test_rol_a_carry_in() {
         let bus = dummy_bus();
         let mut cpu = Cpu::new(bus);
-        cpu.setup(vec![0x2a]);
+        cpu._setup(vec![0x2a]);
         cpu.register_a = 0x42;
         cpu.status.carry = true;
-        cpu.run();
+        cpu._run();
         assert!(!cpu.status.carry);
         assert!(cpu.status.negative);
         assert_eq!(cpu.register_a, 0x85);
@@ -1447,9 +1449,9 @@ mod test {
     fn test_rol_zeropage_carry_out() {
         let bus = dummy_bus();
         let mut cpu = Cpu::new(bus);
-        cpu.setup(vec![0x26, 0x01]);
+        cpu._setup(vec![0x26, 0x01]);
         cpu.bus.write(0x0001, 0x87);
-        cpu.run();
+        cpu._run();
         assert!(cpu.status.carry);
         assert!(!cpu.status.negative);
         assert_eq!(cpu.bus.read(0x0001), 0x0E);
@@ -1459,10 +1461,10 @@ mod test {
     fn test_ror_a_carry_in() {
         let bus = dummy_bus();
         let mut cpu = Cpu::new(bus);
-        cpu.setup(vec![0x6a]);
+        cpu._setup(vec![0x6a]);
         cpu.register_a = 0x42;
         cpu.status.carry = true;
-        cpu.run();
+        cpu._run();
         assert!(!cpu.status.carry);
         assert!(cpu.status.negative);
         assert_eq!(cpu.register_a, 0xa1);
@@ -1472,9 +1474,9 @@ mod test {
     fn test_ror_zeropage_carry_out() {
         let bus = dummy_bus();
         let mut cpu = Cpu::new(bus);
-        cpu.setup(vec![0x66, 0x01]);
+        cpu._setup(vec![0x66, 0x01]);
         cpu.bus.write(0x0001, 0x87);
-        cpu.run();
+        cpu._run();
         assert!(cpu.status.carry);
         assert!(!cpu.status.negative);
         assert_eq!(cpu.bus.read(0x0001), 0x43);
@@ -1484,12 +1486,12 @@ mod test {
     fn test_rti() {
         let bus = dummy_bus();
         let mut cpu = Cpu::new(bus);
-        cpu.setup(vec![0x40]);
+        cpu._setup(vec![0x40]);
         cpu.stack_pointer = 0x5;
         cpu.bus.write(0x0106, 0x81);
         cpu.bus.write(0x0107, 0x20);
         cpu.bus.write(0x0108, 0x13);
-        cpu.run();
+        cpu._run();
         assert!(cpu.status.carry);
         assert!(cpu.status.negative);
         assert_eq!(cpu.stack_pointer, 0x8);
@@ -1500,11 +1502,11 @@ mod test {
     fn test_rts() {
         let bus = dummy_bus();
         let mut cpu = Cpu::new(bus);
-        cpu.setup(vec![0x60]);
+        cpu._setup(vec![0x60]);
         cpu.stack_pointer = 0xfe;
         cpu.bus.write(0x01ff, 0x20);
         cpu.bus.write(0x0100, 0x0b);
-        cpu.run();
+        cpu._run();
         assert_eq!(cpu.stack_pointer, 0x00);
         assert_eq!(cpu.program_counter, 0x0b22);
     }
@@ -1513,10 +1515,10 @@ mod test {
     fn test_sbc_keep_carry() {
         let bus = dummy_bus();
         let mut cpu = Cpu::new(bus);
-        cpu.setup(vec![0xe9, 0x10]);
+        cpu._setup(vec![0xe9, 0x10]);
         cpu.register_a = 0x31;
         cpu.status.carry = true;
-        cpu.run();
+        cpu._run();
         assert_eq!(cpu.register_a, 0x21);
         assert!(cpu.status.carry); // no overflow so carry should stay
         assert!(!cpu.status.negative);
@@ -1528,9 +1530,9 @@ mod test {
     fn test_sbc_no_carry_to_zero() {
         let bus = dummy_bus();
         let mut cpu = Cpu::new(bus);
-        cpu.setup(vec![0xe9, 0x30]);
+        cpu._setup(vec![0xe9, 0x30]);
         cpu.register_a = 0x31;
-        cpu.run();
+        cpu._run();
         assert_eq!(cpu.register_a, 0x00);
         assert!(cpu.status.carry);
         assert!(!cpu.status.negative);
@@ -1542,10 +1544,10 @@ mod test {
     fn test_sbc_consume_carry() {
         let bus = dummy_bus();
         let mut cpu = Cpu::new(bus);
-        cpu.setup(vec![0xe9, 0x40]);
+        cpu._setup(vec![0xe9, 0x40]);
         cpu.register_a = 0x30;
         cpu.status.carry = true;
-        cpu.run();
+        cpu._run();
         assert_eq!(cpu.register_a, 0xf0);
         assert!(!cpu.status.carry); // carry should be consumed
         assert!(cpu.status.negative);
@@ -1557,10 +1559,10 @@ mod test {
     fn test_sbc_overflow() {
         let bus = dummy_bus();
         let mut cpu = Cpu::new(bus);
-        cpu.setup(vec![0xe9, 0x10]);
+        cpu._setup(vec![0xe9, 0x10]);
         cpu.register_a = 0x88; // -120
         cpu.status.carry = true;
-        cpu.run();
+        cpu._run();
         assert_eq!(cpu.register_a, 0x78); // -120-16 turns into +120
         assert!(cpu.status.carry); // does not consume carry
         assert!(!cpu.status.negative);
@@ -1572,8 +1574,8 @@ mod test {
     fn test_sec() {
         let bus = dummy_bus();
         let mut cpu = Cpu::new(bus);
-        cpu.setup(vec![0x38]);
-        cpu.run();
+        cpu._setup(vec![0x38]);
+        cpu._run();
         assert!(cpu.status.carry);
     }
 
@@ -1581,9 +1583,9 @@ mod test {
     fn test_sed() {
         let bus = dummy_bus();
         let mut cpu = Cpu::new(bus);
-        cpu.setup(vec![0xf8]);
+        cpu._setup(vec![0xf8]);
         cpu.status.decimal = true;
-        cpu.run();
+        cpu._run();
         assert!(cpu.status.decimal);
     }
 
@@ -1591,8 +1593,8 @@ mod test {
     fn test_sei() {
         let bus = dummy_bus();
         let mut cpu = Cpu::new(bus);
-        cpu.setup(vec![0x78]);
-        cpu.run();
+        cpu._setup(vec![0x78]);
+        cpu._run();
         assert!(cpu.status.irq_disable);
     }
 
@@ -1600,9 +1602,9 @@ mod test {
     fn test_sta() {
         let bus = dummy_bus();
         let mut cpu = Cpu::new(bus);
-        cpu.setup(vec![0x85, 0x01]);
+        cpu._setup(vec![0x85, 0x01]);
         cpu.register_a = 0x78;
-        cpu.run();
+        cpu._run();
         assert_eq!(cpu.bus.read(0x01), 0x78);
     }
 
@@ -1610,9 +1612,9 @@ mod test {
     fn test_stx() {
         let bus = dummy_bus();
         let mut cpu = Cpu::new(bus);
-        cpu.setup(vec![0x86, 0x01]);
+        cpu._setup(vec![0x86, 0x01]);
         cpu.register_x = 0x78;
-        cpu.run();
+        cpu._run();
         assert_eq!(cpu.bus.read(0x01), 0x78);
     }
 
@@ -1620,9 +1622,9 @@ mod test {
     fn test_sty() {
         let bus = dummy_bus();
         let mut cpu = Cpu::new(bus);
-        cpu.setup(vec![0x84, 0x01]);
+        cpu._setup(vec![0x84, 0x01]);
         cpu.register_y = 0x78;
-        cpu.run();
+        cpu._run();
         assert_eq!(cpu.bus.read(0x01), 0x78);
     }
 
@@ -1630,10 +1632,10 @@ mod test {
     fn test_tay() {
         let bus = dummy_bus();
         let mut cpu = Cpu::new(bus);
-        cpu.setup(vec![0xa8]);
+        cpu._setup(vec![0xa8]);
         cpu.register_a = 0;
         cpu.register_y = 0x78;
-        cpu.run();
+        cpu._run();
         assert_eq!(cpu.register_y, 0x00);
         assert!(!cpu.status.negative);
         assert!(cpu.status.zero);
@@ -1643,9 +1645,9 @@ mod test {
     fn test_tsx() {
         let bus = dummy_bus();
         let mut cpu = Cpu::new(bus);
-        cpu.setup(vec![0xba]);
+        cpu._setup(vec![0xba]);
         cpu.stack_pointer = 0xa5;
-        cpu.run();
+        cpu._run();
         assert_eq!(cpu.register_x, 0xa5);
         assert!(cpu.status.negative);
         assert!(!cpu.status.zero);
@@ -1655,9 +1657,9 @@ mod test {
     fn test_txa() {
         let bus = dummy_bus();
         let mut cpu = Cpu::new(bus);
-        cpu.setup(vec![0x8a]);
+        cpu._setup(vec![0x8a]);
         cpu.register_x = 0xa5;
-        cpu.run();
+        cpu._run();
         assert_eq!(cpu.register_a, 0xa5);
         assert!(cpu.status.negative);
         assert!(!cpu.status.zero);
@@ -1667,11 +1669,11 @@ mod test {
     fn test_txs() {
         let bus = dummy_bus();
         let mut cpu = Cpu::new(bus);
-        cpu.setup(vec![0x9a]);
+        cpu._setup(vec![0x9a]);
         cpu.register_x = 0x55;
         cpu.status.zero = true;
         cpu.status.negative = true;
-        cpu.run();
+        cpu._run();
         assert_eq!(cpu.stack_pointer, 0x55);
         assert!(cpu.status.negative); // does not affect flags
         assert!(cpu.status.zero);
@@ -1681,9 +1683,9 @@ mod test {
     fn test_tya() {
         let bus = dummy_bus();
         let mut cpu = Cpu::new(bus);
-        cpu.setup(vec![0x98]);
+        cpu._setup(vec![0x98]);
         cpu.register_y = 0xa5;
-        cpu.run();
+        cpu._run();
         assert_eq!(cpu.register_a, 0xa5);
         assert!(cpu.status.negative);
         assert!(!cpu.status.zero);

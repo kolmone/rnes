@@ -219,18 +219,10 @@ impl Ppu {
         addr as usize
     }
 
-    pub fn get_background_color(&self) -> u8 {
-        self.palette[0]
-    }
-
-    pub fn get_background_palette(&self, palette: u8) -> (u8, u8, u8, u8) {
+    pub fn get_background_palette(&self, palette: u8) -> [u8; 4] {
         let idx = (1 + 4 * palette) as usize;
-        (
-            self.palette[0],
-            self.palette[idx],
-            self.palette[idx + 1],
-            self.palette[idx + 2],
-        )
+    
+        [self.palette[0], self.palette[idx], self.palette[idx + 1], self.palette[idx + 2]]
     }
 
     pub fn get_sprite_palette(&self, palette: u8) -> (u8, u8, u8) {
@@ -488,7 +480,7 @@ mod test {
 
     #[test]
     fn test_attribute_indexing() {
-        let mut ppu = Ppu::new(vec![0; 0], Mirroring::Vertical);
+        let ppu = Ppu::new(vec![0; 0], Mirroring::Vertical);
 
         assert_eq!(ppu.get_attribute_idx(0, 0), 0);
         assert_eq!(ppu.get_attribute_idx(0, 3), 0);
