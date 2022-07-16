@@ -30,7 +30,7 @@ fn run_rom(file: &str, do_trace: bool) {
 
     let tex_creator = canvas.texture_creator();
     let mut texture = tex_creator
-        .create_texture_target(PixelFormatEnum::RGB24, 256, 240)
+        .create_texture_target(PixelFormatEnum::RGB24, 256 * 2, 240 * 2)
         .unwrap();
 
     let mut event_pump = sdl.event_pump().unwrap();
@@ -45,7 +45,7 @@ fn run_rom(file: &str, do_trace: bool) {
 
     cpu.reset();
     cpu.run_with_callback(move |cpu| {
-        if (do_trace) {
+        if do_trace {
             trace(cpu);
         }
         // sleep(Duration::new(0, 1000));

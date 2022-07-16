@@ -85,7 +85,7 @@ impl ControllerReg {
         }
     }
 
-    pub fn get_base_nametable(&self) -> u8 {
+    pub fn base_nametable(&self) -> u8 {
         (self.nametable1 as u8) | (self.nametable2 as u8) << 1
     }
 }

@@ -10,16 +10,16 @@ pub struct Ppu {
     vram: [u8; 2048],
     palette: [u8; 32],
     oam: [u8; 256],
-    mirroring: Mirroring,
+    pub mirroring: Mirroring,
 
-    controller: ControllerReg,
+    pub controller: ControllerReg,
     addr: AddrReg,
     mask: MaskReg,
     status: StatusReg,
     pub oam_addr: u8,
     data_buf: u8, // Buffered RAM/ROM data
-    vertical_scroll: u8,
-    horizontal_scroll: u8,
+    pub vertical_scroll: u8,
+    pub horizontal_scroll: u8,
     on_vert_scroll: bool,
 
     pub scanline: u16,
@@ -60,7 +60,7 @@ impl Ppu {
             data_buf: 0,
             vertical_scroll: 0,
             horizontal_scroll: 0,
-            on_vert_scroll: true,
+            on_vert_scroll: false,
             scanline: 0,
             cycles: 0,
             nmi_triggered: false,
@@ -191,6 +191,11 @@ impl Ppu {
         } else {
             self.horizontal_scroll = data;
         }
+        // println!(
+        //     "Scroll written! Vertical scroll now {}, horizontal scroll {}",
+        //     self.vertical_scroll,
+        //     self.horizontal_scroll
+        // );
         self.on_vert_scroll = !self.on_vert_scroll;
     }
 
@@ -219,13 +224,18 @@ impl Ppu {
         addr as usize
     }
 
-    pub fn get_background_palette(&self, palette: u8) -> [u8; 4] {
+    fn background_palette(&self, palette: u8) -> [u8; 4] {
         let idx = (1 + 4 * palette) as usize;
-    
-        [self.palette[0], self.palette[idx], self.palette[idx + 1], self.palette[idx + 2]]
+
+        [
+            self.palette[0],
+            self.palette[idx],
+            self.palette[idx + 1],
+            self.palette[idx + 2],
+        ]
     }
 
-    pub fn get_sprite_palette(&self, palette: u8) -> (u8, u8, u8) {
+    pub fn sprite_palette(&self, palette: u8) -> (u8, u8, u8) {
         let idx = (17 + 4 * palette) as usize;
         (
             self.palette[idx],
@@ -235,10 +245,10 @@ impl Ppu {
     }
 
     /// Get pointer to CHR ROM for the tile at specific x index on given scanline
-    pub fn get_tile_idx(&self, scanline: u16, tile_num: u8) -> u8 {
+    pub fn tile_idx(&self, screen: u8, scanline: u16, tile_num: u8) -> u8 {
         let vram_idx = scanline / 8 * 32 + (tile_num as u16);
-        let vram_base = 0x2000 + (self.controller.get_base_nametable() as u16) * 0x400;
-        self.vram[self.mirrored_vram_addr(vram_base + vram_idx)]
+        let vram_base = screen as u16 * 0x400;
+        self.vram[(vram_base + vram_idx) as usize]
     }
 
     /// Get one row of a tile's pixel data (2 bits per pixel = 16 bits)
@@ -252,8 +262,8 @@ impl Ppu {
     /// ||++++---------- R: Tile row
     /// |+-------------- H: Half of pattern table (0: "left"; 1: "right")
     /// +--------------- 0: Pattern table is at $0000-$1FFF
-    pub fn get_tile_row_data(&self, scanline: u16, tile_num: u8) -> ([u8; 8], u8) {
-        let tile_idx = self.get_tile_idx(scanline, tile_num);
+    pub fn tile_row_data(&self, screen: u8, scanline: u16, tile_num: u8) -> ([u8; 8], [u8; 4]) {
+        let tile_idx = self.tile_idx(screen, scanline, tile_num);
         let row = scanline % 8;
 
         let background_base = self.controller.background_half as usize * 0x1000;
@@ -269,13 +279,16 @@ impl Ppu {
             upper_bits >>= 1;
         }
 
-        (values, self.get_attribute(scanline, tile_num))
+        (
+            values,
+            self.background_palette(self.get_attribute(screen, scanline, tile_num)),
+        )
     }
 
-    fn get_attribute(&self, scanline: u16, tile_num: u8) -> u8 {
+    fn get_attribute(&self, screen: u8, scanline: u16, tile_num: u8) -> u8 {
         let attribute_idx = self.get_attribute_idx(scanline, tile_num);
-        let vram_base = 0x23c0 + (self.controller.get_base_nametable() as u16) * 0x400;
-        let attribute = self.vram[self.mirrored_vram_addr(vram_base + attribute_idx)];
+        let vram_base = 0x3c0 + screen as usize * 0x400;
+        let attribute = self.vram[vram_base + attribute_idx];
 
         match ((tile_num / 2) % 2, (scanline / 16) % 2) {
             (0, 0) => (attribute >> 0) & 0x03, // top left
@@ -287,8 +300,8 @@ impl Ppu {
     }
 
     // Each attribute byte maps to a 32x32 pixel area
-    fn get_attribute_idx(&self, scanline: u16, tile_num: u8) -> u16 {
-        scanline / 32 * 8 + (tile_num / 4) as u16
+    fn get_attribute_idx(&self, scanline: u16, tile_num: u8) -> usize {
+        (scanline / 32 * 8 + (tile_num / 4) as u16) as usize
     }
 }
 

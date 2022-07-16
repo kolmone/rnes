@@ -1,3 +1,5 @@
+use std::fmt;
+
 use crate::ppu::Ppu;
 
 pub struct Bus<'call> {
@@ -9,11 +11,21 @@ pub struct Bus<'call> {
     render_callback: Box<dyn FnMut(&Ppu) + 'call>,
 }
 
-#[derive(Debug, Copy, Clone)]
+#[derive(Debug, Copy, Clone, PartialEq)]
 pub enum Mirroring {
     Vertical,
     Horizontal,
     FourScreen,
+}
+
+impl fmt::Display for Mirroring {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Mirroring::Vertical => write!(f, "Vertical"),
+            Mirroring::Horizontal => write!(f, "Horizontal"),
+            Mirroring::FourScreen => write!(f, "FourScreen"),
+        }
+    }
 }
 
 pub struct Rom {
