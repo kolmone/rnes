@@ -116,7 +116,7 @@ impl<'call> Bus<'call> {
             PPU_REGISTERS_START..=PPU_REGISTERS_END => self.ppu.read(addr),
             ROM_START.. => self.read_prg(addr),
             _ => {
-                println!("Read from unknown address 0x{:X}", addr);
+                // println!("Read from unknown address 0x{:X}", addr);
                 0
             }
         }
@@ -134,7 +134,7 @@ impl<'call> Bus<'call> {
             PPU_REGISTERS_START..=PPU_REGISTERS_END => self.ppu.write(addr, data),
             OAM_DMA_ADDR => self.oam_dma(data),
             ROM_START.. => println!("Write to ROM space at address 0x{:X}", addr),
-            _ => println!("Write to unknown address 0x{:X}", addr),
+            _ => (), // println!("Write to unknown address 0x{:X}", addr),
         }
     }
 
@@ -159,6 +159,8 @@ impl<'call> Bus<'call> {
         for i in 0..256 {
             let oam_data = self.read(start_addr + i);
             self.write(0x2004, oam_data);
+            self.ppu.tick(6);
         }
+        self.ppu.tick(3);
     }
 }

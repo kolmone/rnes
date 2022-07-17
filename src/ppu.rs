@@ -90,7 +90,8 @@ impl Ppu {
                         self.nmi_triggered = true;
                     }
                 }
-                Ppu::LINES_PER_FRAME => {
+                261 => {
+                    self.status.sprite0_hit = false;
                     self.scanline = 0;
                     self.status.vblank = false;
                 }
@@ -103,7 +104,7 @@ impl Ppu {
 
     pub fn nmi_triggered(&mut self) -> bool {
         if self.nmi_triggered {
-            println!("NMI triggered!");
+            // println!("NMI triggered!");
             self.nmi_triggered = false;
             return true;
         }
@@ -133,6 +134,12 @@ impl Ppu {
                 if !old_nmi_val && self.controller.generate_nmi && self.status.vblank {
                     self.nmi_triggered = true;
                 }
+                println!(
+                    "CTRL 0b{:08b} written at scanline {}, base nametable is {}",
+                    data,
+                    self.scanline,
+                    self.controller.base_nametable()
+                );
             }
             REG_MASK => self.mask = data.into(),
             REG_OAM_ADDR => self.oam_addr = data,
@@ -322,7 +329,6 @@ impl Ppu {
         self.sprite_line = [(self.palette[0], false); 256];
         // First line can't have sprites
         if self.scanline == 0 {
-            self.status.sprite0_hit = false;
             return;
         }
 
@@ -349,7 +355,7 @@ impl Ppu {
                     );
                     if color != 0 {
                         if sprite == 0 {
-                            // println!("Sprite zero hit on line {}", self.scanline);
+                            println!("Sprite zero hit at {}, {}", x, y);
                             self.status.sprite0_hit = true;
                         }
                         self.sprite_line[x] = (self.sprite_color(oam[2] & 0x3, color), true);

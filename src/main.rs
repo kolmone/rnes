@@ -226,13 +226,13 @@ fn main() {
     if args.len() < 2 {
         println!("Must provide at least one parameter! Try:");
         println!("  snake          -- runs a snake game");
-        println!("  nestest        -- runs a snake game");
+        println!("  nestest        -- runs nestest rom");
         println!("  <file>         -- runs given rom");
         return;
     }
 
     let trace = args.contains(&"--trace".to_owned());
-    let render_debug = args.contains(&"--render_debug".to_owned());
+    let render_debug = args.contains(&"--debug".to_owned());
 
     if args[1] == "snake".to_owned() {
         run_snake();

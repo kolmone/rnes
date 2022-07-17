@@ -14,6 +14,7 @@ pub struct Renderer {
     frame_a: Frame,
     frame_b: Frame,
     sprite_frame: Frame,
+    final_frame: Frame,
     palette: Palette,
 }
 
@@ -22,6 +23,7 @@ impl Renderer {
         Self {
             frame_a: Frame::new(),
             frame_b: Frame::new(),
+            final_frame: Frame::new(),
             sprite_frame: Frame::new(),
             palette: Palette::new("cxa.pal"),
         }
@@ -38,89 +40,67 @@ impl Renderer {
         self.render_background_line(ppu, 1);
         self.render_sprites(ppu);
 
-        if (ppu.scanline - 1) == 239 {
-            let screen_rects = (Rect::new(0, 0, 256, 240), Rect::new(256, 0, 256, 240));
-            let frames = match (ppu.mirroring, ppu.controller.base_nametable()) {
-                (Mirroring::Horizontal, 0 | 1) | (Mirroring::Vertical, 0 | 2) => {
-                    (&self.frame_a, &self.frame_b)
-                }
-                (Mirroring::Horizontal, 2 | 3) | (Mirroring::Vertical, 1 | 3) => {
-                    (&self.frame_b, &self.frame_a)
-                }
-                _ => panic!("Unsupported"),
-            };
-            if debug {
-                texture
-                    .update(screen_rects.0, &frames.0.data, 256 * 3)
-                    .unwrap();
-                texture
-                    .update(screen_rects.1, &frames.1.data, 256 * 3)
-                    .unwrap();
+        let y = ppu.scanline as usize - 1;
+
+        let frames = match (ppu.mirroring, ppu.controller.base_nametable()) {
+            (Mirroring::Horizontal, 0 | 1) | (Mirroring::Vertical, 0 | 2) => {
+                (&self.frame_a, &self.frame_b)
             }
+            (Mirroring::Horizontal, 2 | 3) | (Mirroring::Vertical, 1 | 3) => {
+                (&self.frame_b, &self.frame_a)
+            }
+            _ => panic!("Unsupported"),
+        };
 
-            let mut bg_frame = Frame::new();
+        if ppu.vertical_scroll > 0 {
+            let scroll = ppu.vertical_scroll as usize;
 
-            if ppu.vertical_scroll > 0 {
-                let scroll = ppu.vertical_scroll as usize;
-
-                for y in 0..Frame::HEIGHT - scroll {
-                    for x in 0..Frame::WIDTH {
-                        let pixel = frames.0.pixel(x, y + scroll);
-                        bg_frame.set_pixel(x, y, pixel.0, pixel.1);
-                    }
-                }
-
-                for y in 0..scroll {
-                    for x in 0..Frame::WIDTH {
-                        let pixel = frames.1.pixel(x, y);
-                        bg_frame.set_pixel(x, Frame::HEIGHT - scroll + y, pixel.0, pixel.1);
-                    }
-                }
-            } else if ppu.horizontal_scroll > 0 {
-                let scroll = ppu.horizontal_scroll as usize;
-
-                for y in 0..Frame::HEIGHT {
-                    for x in 0..Frame::WIDTH - scroll {
-                        let pixel = frames.0.pixel(x + scroll, y);
-                        bg_frame.set_pixel(x, y, pixel.0, pixel.1);
-                    }
-                }
-
-                for y in 0..Frame::HEIGHT {
-                    for x in 0..scroll {
-                        let pixel = frames.1.pixel(x, y);
-                        bg_frame.set_pixel(Frame::WIDTH - scroll + x, y, pixel.0, pixel.1);
-                    }
+            if y < Frame::HEIGHT - scroll {
+                for x in 0..Frame::WIDTH {
+                    let pixel = frames.0.pixel(x, y + scroll);
+                    self.final_frame.set_pixel(x, y, pixel.0, pixel.1);
                 }
             } else {
-                bg_frame = frames.0.clone();
-            }
-
-            if debug {
-                let sprite_rect = Rect::new(0, 240, 256, 240);
-                texture
-                    .update(sprite_rect, &self.sprite_frame.data, 256 * 3)
-                    .unwrap();
-            }
-
-            for y in 0..240 {
-                for x in 0..256 {
-                    if self.sprite_frame.opaque(x, y) {
-                        let pixel = self.sprite_frame.pixel(x, y);
-                        bg_frame.set_pixel(x, y, pixel.0, pixel.1);
-                    }
+                for x in 0..Frame::WIDTH {
+                    let pixel = frames.1.pixel(x, y - (Frame::HEIGHT - scroll));
+                    self.final_frame.set_pixel(x, y, pixel.0, pixel.1);
                 }
             }
+        } else if ppu.horizontal_scroll > 0 {
+            let scroll = ppu.horizontal_scroll as usize;
 
-            let final_rect = if debug {
-                Rect::new(256, 240, 256, 240)
+            for x in 0..Frame::WIDTH {
+                let pixel = if x < Frame::WIDTH - scroll {
+                    frames.0.pixel(x + scroll, y)
+                } else {
+                    frames.1.pixel(x - (Frame::WIDTH - scroll), y)
+                };
+                self.final_frame.set_pixel(x, y, pixel.0, pixel.1);
+            }
+        } else {
+            // println!(
+            //     "No scrolling, base nametable {}",
+            //     ppu.controller.base_nametable()
+            // );
+            for x in 0..Frame::WIDTH {
+                let pixel = frames.0.pixel(x, y);
+                self.final_frame.set_pixel(x, y, pixel.0, pixel.1);
+            }
+        }
+
+        for x in 0..Frame::WIDTH {
+            if self.sprite_frame.opaque(x, y) {
+                let pixel = self.sprite_frame.pixel(x, y);
+                self.final_frame.set_pixel(x, y, pixel.0, pixel.1);
+            }
+        }
+
+        if y == 239 {
+            if debug {
+                self.draw_debug_screens(canvas, texture);
             } else {
-                Rect::new(0, 0, 256, 240)
-            };
-            texture.update(final_rect, &bg_frame.data, 256 * 3).unwrap();
-
-            canvas.copy(&texture, None, None).unwrap();
-            canvas.present();
+                self.draw_screen(canvas, texture);
+            }
         }
     }
 
@@ -158,5 +138,38 @@ impl Renderer {
                 line[x].1,
             );
         }
+    }
+
+    fn draw_screen(&mut self, canvas: &mut Canvas<Window>, texture: &mut Texture) {
+        let final_rect = Rect::new(0, 0, 256, 240);
+        texture
+            .update(final_rect, &self.final_frame.data, 256 * 3)
+            .unwrap();
+
+        canvas.copy(&texture, None, None).unwrap();
+        canvas.present();
+    }
+
+    fn draw_debug_screens(&self, canvas: &mut Canvas<Window>, texture: &mut Texture) {
+        let screen_rects = (Rect::new(0, 0, 256, 240), Rect::new(256, 0, 256, 240));
+        texture
+            .update(screen_rects.0, &self.frame_a.data, 256 * 3)
+            .unwrap();
+        texture
+            .update(screen_rects.1, &self.frame_b.data, 256 * 3)
+            .unwrap();
+
+        let sprite_rect = Rect::new(0, 240, 256, 240);
+        texture
+            .update(sprite_rect, &self.sprite_frame.data, 256 * 3)
+            .unwrap();
+
+        let final_rect = Rect::new(256, 240, 256, 240);
+        texture
+            .update(final_rect, &self.final_frame.data, 256 * 3)
+            .unwrap();
+
+        canvas.copy(&texture, None, None).unwrap();
+        canvas.present();
     }
 }
