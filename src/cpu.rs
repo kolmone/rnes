@@ -14,6 +14,7 @@ pub struct Cpu<'a> {
     pub status: StatusFlags,
     pub bus: Bus<'a>,
     pub mnemonic: String,
+    pub cycles: u8,
 }
 
 #[derive(Debug, Copy, Clone)]
@@ -90,6 +91,7 @@ impl<'a> Cpu<'a> {
             },
             bus,
             mnemonic: "".to_owned(),
+            cycles: 0,
         }
     }
 
@@ -615,6 +617,7 @@ impl<'a> Cpu<'a> {
 
             let instruction = instr::INSTRUCTIONS.iter().find(|x| x.opcode == op).unwrap();
             self.mnemonic = instruction.mnemonic.to_owned();
+            self.cycles = instruction.duration;
 
             callback(self);
 

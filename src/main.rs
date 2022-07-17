@@ -17,7 +17,12 @@ use sdl2::{
     pixels::{Color, PixelFormatEnum},
     EventPump,
 };
-use std::{collections::HashMap, env, thread::sleep, time::Duration};
+use std::{
+    collections::HashMap,
+    env,
+    thread::sleep,
+    time::{Duration, SystemTime},
+};
 
 fn build_keymap() -> HashMap<Keycode, Button> {
     let mut keymap = HashMap::new();
@@ -27,8 +32,8 @@ fn build_keymap() -> HashMap<Keycode, Button> {
     keymap.insert(Keycode::Left, Button::Left);
     keymap.insert(Keycode::Backspace, Button::Select);
     keymap.insert(Keycode::Return, Button::Start);
-    keymap.insert(Keycode::Z, Button::A);
-    keymap.insert(Keycode::X, Button::B);
+    keymap.insert(Keycode::X, Button::A);
+    keymap.insert(Keycode::Z, Button::B);
     return keymap;
 }
 
@@ -61,9 +66,14 @@ fn run_rom(file: &str, do_trace: bool, render_debug: bool) {
     let mut renderer = Renderer::new();
     let keymap = build_keymap();
 
+    let mut expected_timestamp = SystemTime::now();
+
     let bus = Bus::new(
         Rom::new(rom).unwrap(),
         |ppu: &Ppu, controller: &mut Controller| {
+            while SystemTime::now() < expected_timestamp {}
+            expected_timestamp = SystemTime::now() + Duration::from_nanos(63613);
+
             renderer.render_line(&ppu, &mut canvas, &mut texture, render_debug);
 
             for event in event_pump.poll_iter() {
@@ -91,7 +101,6 @@ fn run_rom(file: &str, do_trace: bool, render_debug: bool) {
     cpu.run_with_callback(move |cpu| {
         if do_trace {
             trace(cpu);
-            // sleep(Duration::new(0, 1000));
         }
     });
 }

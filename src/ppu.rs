@@ -1,6 +1,7 @@
 mod regs;
 
 use core::panic;
+use std::collections::binary_heap::Iter;
 
 use crate::bus::Mirroring;
 use regs::{AddrReg, ControllerReg, MaskReg, StatusReg};
@@ -26,7 +27,7 @@ pub struct Ppu {
     cycles: usize,
     nmi_triggered: bool,
 
-    pub sprite_line: [(u8, bool); 256],
+    pub sprite_line: [(u8, bool, bool); 256],
 }
 
 const REG_CONTROLLER: u16 = 0x2000;
@@ -66,7 +67,7 @@ impl Ppu {
             scanline: 0,
             cycles: 0,
             nmi_triggered: false,
-            sprite_line: [(0, false); 256],
+            sprite_line: [(0, false, false); 256],
         }
     }
 
@@ -326,39 +327,36 @@ impl Ppu {
     }
 
     fn evaluate_sprites(&mut self) {
-        self.sprite_line = [(self.palette[0], false); 256];
+        self.sprite_line = [(self.palette[0], false, false); 256];
         // First line can't have sprites
         if self.scanline == 0 {
             return;
         }
 
         let y = self.scanline as usize - 1; // Sprites are drawn on off by one scanline
+        let yy = y as u8;
+
+        let line_sprites: Vec<Sprite> = self
+            .sprites()
+            .filter(|item| yy >= item.y_pos && yy < item.y_pos + 8)
+            .collect();
 
         for x in 0..256 {
-            for sprite in 0..64 {
-                let oam = &self.oam[sprite * 4..];
-                let y_coord = oam[0] as usize;
-                let x_coord = oam[3] as usize;
-                let region_match =
-                    y >= y_coord && y < y_coord + 8 && x >= x_coord && x < x_coord + 8;
+            for sprite in &line_sprites {
+                let x_coord = sprite.x_pos as usize;
 
-                if region_match {
-                    // println!("Region matched for sprite {}", sprite);
+                if x >= x_coord && x < x_coord + 8 {
                     let x_idx = x - x_coord;
-                    let y_idx = y - y_coord;
-                    let color = self.sprite_pixel_data(
-                        oam[1],
-                        x_idx,
-                        y_idx,
-                        oam[2] & 0x80 != 0,
-                        oam[2] & 0x40 != 0,
-                    );
+                    let y_idx = y - sprite.y_pos as usize;
+                    let color = self.sprite_pixel_data(sprite, x_idx, y_idx);
                     if color != 0 {
-                        if sprite == 0 {
-                            println!("Sprite zero hit at {}, {}", x, y);
+                        if sprite.idx == 0 {
+                            // println!("Sprite zero hit at {}, {}", x, y);
                             self.status.sprite0_hit = true;
                         }
-                        self.sprite_line[x] = (self.sprite_color(oam[2] & 0x3, color), true);
+                        let color = self.sprite_color(sprite.attributes & 0x3, color);
+                        let priority = sprite.attributes & 0x20 != 0;
+                        self.sprite_line[x] = (color, true, priority);
                         break;
                     }
                 }
@@ -366,23 +364,65 @@ impl Ppu {
         }
     }
 
-    fn sprite_pixel_data(
-        &self,
-        tile_idx: u8,
-        x_idx: usize,
-        y_idx: usize,
-        flip_vertical: bool,
-        flip_horizontal: bool,
-    ) -> u8 {
-        let row = if flip_vertical { 7 - y_idx } else { y_idx };
+    fn sprite_pixel_data(&self, sprite: &Sprite, x_idx: usize, y_idx: usize) -> u8 {
+        let row = if sprite.attributes & 0x80 != 0 {
+            7 - y_idx
+        } else {
+            y_idx
+        };
         let base = self.controller.sprite_half as usize * 0x1000;
-        let tile_ptr = base + (tile_idx as usize) * 16 + row as usize;
+        let tile_ptr = base + (sprite.tile_idx as usize) * 16 + row as usize;
         let lower_bits = self.chr[tile_ptr];
         let upper_bits = self.chr[tile_ptr + 8];
 
-        let idx = if flip_horizontal { x_idx } else { 7 - x_idx };
+        let idx = if sprite.attributes & 0x40 != 0 {
+            x_idx
+        } else {
+            7 - x_idx
+        };
 
         ((lower_bits >> idx) & 0x1) + (((upper_bits >> idx) & 0x1) << 1) & 0x3
+    }
+
+    fn sprites(&self) -> SpriteIterator {
+        SpriteIterator {
+            array: &self.oam,
+            idx: 0,
+        }
+    }
+}
+
+struct Sprite {
+    pub idx: u8,
+    pub y_pos: u8,
+    pub x_pos: u8,
+    pub tile_idx: u8,
+    pub attributes: u8,
+}
+
+struct SpriteIterator<'a> {
+    array: &'a [u8],
+    idx: u8,
+}
+
+impl<'a> Iterator for SpriteIterator<'a> {
+    type Item = Sprite;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        if self.array.len() < 4 {
+            None
+        } else {
+            let sprite = Sprite {
+                y_pos: self.array[0],
+                tile_idx: self.array[1],
+                attributes: self.array[2],
+                x_pos: self.array[3],
+                idx: self.idx,
+            };
+            self.idx += 1;
+            self.array = &self.array[4..];
+            Some(sprite)
+        }
     }
 }
 

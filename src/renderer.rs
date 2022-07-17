@@ -57,13 +57,13 @@ impl Renderer {
 
             if y < Frame::HEIGHT - scroll {
                 for x in 0..Frame::WIDTH {
-                    let pixel = frames.0.pixel(x, y + scroll);
-                    self.final_frame.set_pixel(x, y, pixel.0, pixel.1);
+                    let pixel = frames.0.bg_pixel(x, y + scroll);
+                    self.final_frame.set_bg_pixel(x, y, pixel);
                 }
             } else {
                 for x in 0..Frame::WIDTH {
-                    let pixel = frames.1.pixel(x, y - (Frame::HEIGHT - scroll));
-                    self.final_frame.set_pixel(x, y, pixel.0, pixel.1);
+                    let pixel = frames.1.bg_pixel(x, y - (Frame::HEIGHT - scroll));
+                    self.final_frame.set_bg_pixel(x, y, pixel);
                 }
             }
         } else if ppu.horizontal_scroll > 0 {
@@ -71,11 +71,11 @@ impl Renderer {
 
             for x in 0..Frame::WIDTH {
                 let pixel = if x < Frame::WIDTH - scroll {
-                    frames.0.pixel(x + scroll, y)
+                    frames.0.bg_pixel(x + scroll, y)
                 } else {
-                    frames.1.pixel(x - (Frame::WIDTH - scroll), y)
+                    frames.1.bg_pixel(x - (Frame::WIDTH - scroll), y)
                 };
-                self.final_frame.set_pixel(x, y, pixel.0, pixel.1);
+                self.final_frame.set_bg_pixel(x, y, pixel);
             }
         } else {
             // println!(
@@ -83,15 +83,17 @@ impl Renderer {
             //     ppu.controller.base_nametable()
             // );
             for x in 0..Frame::WIDTH {
-                let pixel = frames.0.pixel(x, y);
-                self.final_frame.set_pixel(x, y, pixel.0, pixel.1);
+                let pixel = frames.0.bg_pixel(x, y);
+                self.final_frame.set_bg_pixel(x, y, pixel);
             }
         }
 
         for x in 0..Frame::WIDTH {
-            if self.sprite_frame.opaque(x, y) {
-                let pixel = self.sprite_frame.pixel(x, y);
-                self.final_frame.set_pixel(x, y, pixel.0, pixel.1);
+            if self.sprite_frame.opaque(x, y)
+                && (!self.sprite_frame.priority(x, y) || !self.final_frame.opaque(x, y))
+            {
+                let pixel = self.sprite_frame.sprite_pixel(x, y);
+                self.final_frame.set_sprite_pixel(x, y, pixel);
             }
         }
 
@@ -121,7 +123,8 @@ impl Renderer {
 
             for i in 0..8 {
                 let rgb = self.palette.palette[tile_palette[tile_data[i] as usize] as usize];
-                frame.set_pixel(x + 7 - i, y as usize, rgb, tile_data[i] != 0);
+                let pixel = frame::BGPixel(rgb, tile_data[i] != 0);
+                frame.set_bg_pixel(x + 7 - i, y as usize, pixel);
             }
             x += 8;
         }
@@ -131,11 +134,14 @@ impl Renderer {
         let y = ppu.scanline - 1;
         let line = &ppu.sprite_line;
         for x in 0..256 {
-            self.sprite_frame.set_pixel(
+            self.sprite_frame.set_sprite_pixel(
                 x,
                 y as usize,
-                self.palette.palette[line[x].0 as usize],
-                line[x].1,
+                frame::SpritePixel(
+                    self.palette.palette[line[x].0 as usize],
+                    line[x].1,
+                    line[x].2,
+                ),
             );
         }
     }
