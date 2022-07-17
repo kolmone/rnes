@@ -25,6 +25,8 @@ pub struct Ppu {
     pub scanline: u16,
     cycles: usize,
     nmi_triggered: bool,
+
+    pub sprite_line: [(u8, bool); 256],
 }
 
 const REG_CONTROLLER: u16 = 0x2000;
@@ -64,6 +66,7 @@ impl Ppu {
             scanline: 0,
             cycles: 0,
             nmi_triggered: false,
+            sprite_line: [(0, false); 256],
         }
     }
 
@@ -76,6 +79,7 @@ impl Ppu {
 
             match self.scanline {
                 0..=Ppu::LAST_RENDER_LINE => {
+                    self.evaluate_sprites();
                     self.scanline += 1;
                     return true;
                 }
@@ -235,13 +239,21 @@ impl Ppu {
         ]
     }
 
-    pub fn sprite_palette(&self, palette: u8) -> (u8, u8, u8) {
+    fn sprite_palette(&self, palette: u8) -> (u8, u8, u8) {
         let idx = (17 + 4 * palette) as usize;
         (
             self.palette[idx],
             self.palette[idx + 1],
             self.palette[idx + 3],
         )
+    }
+
+    fn sprite_color(&self, palette: u8, idx: u8) -> u8 {
+        let idx = (16 + 4 * palette + idx) as usize;
+        if idx >= 32 {
+            panic!("Requesting color {} from sprite palette {}", idx, palette);
+        }
+        self.palette[idx]
     }
 
     /// Get pointer to CHR ROM for the tile at specific x index on given scanline
@@ -262,31 +274,33 @@ impl Ppu {
     /// ||++++---------- R: Tile row
     /// |+-------------- H: Half of pattern table (0: "left"; 1: "right")
     /// +--------------- 0: Pattern table is at $0000-$1FFF
-    pub fn tile_row_data(&self, screen: u8, scanline: u16, tile_num: u8) -> ([u8; 8], [u8; 4]) {
+    pub fn bg_tile_data(&self, screen: u8, scanline: u16, tile_num: u8) -> ([u8; 8], [u8; 4]) {
         let tile_idx = self.tile_idx(screen, scanline, tile_num);
         let row = scanline % 8;
 
-        let background_base = self.controller.background_half as usize * 0x1000;
-        let tile_ptr = background_base + (tile_idx as usize) * 16 + row as usize;
+        (
+            self.bg_tile_row(tile_idx, row),
+            self.background_palette(self.bg_attribute(screen, scanline, tile_num)),
+        )
+    }
+
+    fn bg_tile_row(&self, tile_idx: u8, row: u16) -> [u8; 8] {
+        let base = self.controller.background_half as usize * 0x1000;
+        let tile_ptr = base + (tile_idx as usize) * 16 + row as usize;
         let mut lower_bits = self.chr[tile_ptr];
         let mut upper_bits = self.chr[tile_ptr + 8];
 
         let mut values = [0; 8];
         for i in 0..8 {
             values[i] = (lower_bits & 0x1) + ((upper_bits & 0x1) << 1);
-            // println!("Tile {:X} is lower: {:X} and upper: {:X}, combined: {:X}", tile_idx, lower_bits, upper_bits, values[i]);
             lower_bits >>= 1;
             upper_bits >>= 1;
         }
-
-        (
-            values,
-            self.background_palette(self.get_attribute(screen, scanline, tile_num)),
-        )
+        values
     }
 
-    fn get_attribute(&self, screen: u8, scanline: u16, tile_num: u8) -> u8 {
-        let attribute_idx = self.get_attribute_idx(scanline, tile_num);
+    fn bg_attribute(&self, screen: u8, scanline: u16, tile_num: u8) -> u8 {
+        let attribute_idx = self.attribute_idx(scanline, tile_num);
         let vram_base = 0x3c0 + screen as usize * 0x400;
         let attribute = self.vram[vram_base + attribute_idx];
 
@@ -300,8 +314,69 @@ impl Ppu {
     }
 
     // Each attribute byte maps to a 32x32 pixel area
-    fn get_attribute_idx(&self, scanline: u16, tile_num: u8) -> usize {
+    fn attribute_idx(&self, scanline: u16, tile_num: u8) -> usize {
         (scanline / 32 * 8 + (tile_num / 4) as u16) as usize
+    }
+
+    fn evaluate_sprites(&mut self) {
+        self.sprite_line = [(self.palette[0], false); 256];
+        // First line can't have sprites
+        if self.scanline == 0 {
+            self.status.sprite0_hit = false;
+            return;
+        }
+
+        let y = self.scanline as usize - 1; // Sprites are drawn on off by one scanline
+
+        for x in 0..256 {
+            for sprite in 0..64 {
+                let oam = &self.oam[sprite * 4..];
+                let y_coord = oam[0] as usize;
+                let x_coord = oam[3] as usize;
+                let region_match =
+                    y >= y_coord && y < y_coord + 8 && x >= x_coord && x < x_coord + 8;
+
+                if region_match {
+                    // println!("Region matched for sprite {}", sprite);
+                    let x_idx = x - x_coord;
+                    let y_idx = y - y_coord;
+                    let color = self.sprite_pixel_data(
+                        oam[1],
+                        x_idx,
+                        y_idx,
+                        oam[2] & 0x80 != 0,
+                        oam[2] & 0x40 != 0,
+                    );
+                    if color != 0 {
+                        if sprite == 0 {
+                            // println!("Sprite zero hit on line {}", self.scanline);
+                            self.status.sprite0_hit = true;
+                        }
+                        self.sprite_line[x] = (self.sprite_color(oam[2] & 0x3, color), true);
+                        break;
+                    }
+                }
+            }
+        }
+    }
+
+    fn sprite_pixel_data(
+        &self,
+        tile_idx: u8,
+        x_idx: usize,
+        y_idx: usize,
+        flip_vertical: bool,
+        flip_horizontal: bool,
+    ) -> u8 {
+        let row = if flip_vertical { 7 - y_idx } else { y_idx };
+        let base = self.controller.sprite_half as usize * 0x1000;
+        let tile_ptr = base + (tile_idx as usize) * 16 + row as usize;
+        let lower_bits = self.chr[tile_ptr];
+        let upper_bits = self.chr[tile_ptr + 8];
+
+        let idx = if flip_horizontal { x_idx } else { 7 - x_idx };
+
+        ((lower_bits >> idx) & 0x1) + (((upper_bits >> idx) & 0x1) << 1) & 0x3
     }
 }
 
@@ -481,23 +556,23 @@ mod test {
         ppu.write(0x2005, 0x21);
         ppu.write(0x2005, 0x56);
 
-        assert_eq!(ppu.vertical_scroll, 0x21);
-        assert_eq!(ppu.horizontal_scroll, 0x56);
+        assert_eq!(ppu.horizontal_scroll, 0x21);
+        assert_eq!(ppu.vertical_scroll, 0x56);
 
         ppu.write(0x2005, 0x17);
         ppu.write(0x2005, 0x34);
 
-        assert_eq!(ppu.vertical_scroll, 0x17);
-        assert_eq!(ppu.horizontal_scroll, 0x34);
+        assert_eq!(ppu.horizontal_scroll, 0x17);
+        assert_eq!(ppu.vertical_scroll, 0x34);
     }
 
     #[test]
     fn test_attribute_indexing() {
         let ppu = Ppu::new(vec![0; 0], Mirroring::Vertical);
 
-        assert_eq!(ppu.get_attribute_idx(0, 0), 0);
-        assert_eq!(ppu.get_attribute_idx(0, 3), 0);
-        assert_eq!(ppu.get_attribute_idx(31, 4), 1);
-        assert_eq!(ppu.get_attribute_idx(32, 3), 8);
+        assert_eq!(ppu.attribute_idx(0, 0), 0);
+        assert_eq!(ppu.attribute_idx(0, 3), 0);
+        assert_eq!(ppu.attribute_idx(31, 4), 1);
+        assert_eq!(ppu.attribute_idx(32, 3), 8);
     }
 }

@@ -17,7 +17,7 @@ use sdl2::{
 };
 use std::{env, thread::sleep, time::Duration};
 
-fn run_rom(file: &str, do_trace: bool) {
+fn run_rom(file: &str, do_trace: bool, render_debug: bool) {
     let sdl = sdl2::init().unwrap();
     let window = sdl
         .video()
@@ -29,9 +29,16 @@ fn run_rom(file: &str, do_trace: bool) {
     let mut canvas = window.into_canvas().present_vsync().build().unwrap();
 
     let tex_creator = canvas.texture_creator();
-    let mut texture = tex_creator
-        .create_texture_target(PixelFormatEnum::RGB24, 256 * 2, 240 * 2)
-        .unwrap();
+
+    let mut texture = if render_debug {
+        tex_creator
+            .create_texture_target(PixelFormatEnum::RGB24, 256 * 2, 240 * 2)
+            .unwrap()
+    } else {
+        tex_creator
+            .create_texture_target(PixelFormatEnum::RGB24, 256, 240)
+            .unwrap()
+    };
 
     let mut event_pump = sdl.event_pump().unwrap();
 
@@ -39,7 +46,7 @@ fn run_rom(file: &str, do_trace: bool) {
 
     let mut renderer = Renderer::new();
     let bus = Bus::new(Rom::new(rom).unwrap(), |ppu: &Ppu| {
-        renderer.render_line(&ppu, &mut canvas, &mut texture)
+        renderer.render_line(&ppu, &mut canvas, &mut texture, render_debug)
     });
     let mut cpu = Cpu::new(bus);
 
@@ -172,10 +179,12 @@ fn run_snake() {
 fn trace(cpu: &mut Cpu) {
     let status: u8 = cpu.status.into();
     println!(
-        "{:04X}  {:02X}  {:3}  A:{:02X} X:{:02X} Y:{:02X} P:{:02X} SP:{:02X}",
+        "{:04X}  {:02X}  {:3} {:02X} {:02X}  A:{:02X} X:{:02X} Y:{:02X} P:{:02X} SP:{:02X}",
         cpu.program_counter,
         cpu.bus.read(cpu.program_counter),
         cpu.mnemonic,
+        cpu.bus.read(cpu.program_counter + 1),
+        cpu.bus.read(cpu.program_counter + 2),
         cpu.register_a,
         cpu.register_x,
         cpu.register_y,
@@ -222,17 +231,14 @@ fn main() {
         return;
     }
 
-    let trace = if args.len() > 2 && &args[2] == "--trace" {
-        true
-    } else {
-        false
-    };
+    let trace = args.contains(&"--trace".to_owned());
+    let render_debug = args.contains(&"--render_debug".to_owned());
 
     if args[1] == "snake".to_owned() {
         run_snake();
     } else if args[1] == "nestest".to_owned() {
         run_nestest();
     } else {
-        run_rom(&args[1], trace);
+        run_rom(&args[1], trace, render_debug);
     }
 }

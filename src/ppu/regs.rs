@@ -125,7 +125,7 @@ impl MaskReg {
 #[derive(Debug, Copy, Clone)]
 pub struct StatusReg {
     sprite_overflow: bool,
-    sprite0_hit: bool,
+    pub sprite0_hit: bool,
     pub vblank: bool,
 }
 

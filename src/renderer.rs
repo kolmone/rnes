@@ -27,17 +27,18 @@ impl Renderer {
         }
     }
 
-    pub fn render_line(&mut self, ppu: &Ppu, canvas: &mut Canvas<Window>, texture: &mut Texture) {
+    pub fn render_line(
+        &mut self,
+        ppu: &Ppu,
+        canvas: &mut Canvas<Window>,
+        texture: &mut Texture,
+        debug: bool,
+    ) {
         self.render_background_line(ppu, 0);
         self.render_background_line(ppu, 1);
         self.render_sprites(ppu);
 
         if (ppu.scanline - 1) == 239 {
-            // println!(
-            //     "{} mirroring, nametable is {}",
-            //     ppu.mirroring,
-            //     ppu.controller.get_base_nametable()
-            // );
             let screen_rects = (Rect::new(0, 0, 256, 240), Rect::new(256, 0, 256, 240));
             let frames = match (ppu.mirroring, ppu.controller.base_nametable()) {
                 (Mirroring::Horizontal, 0 | 1) | (Mirroring::Vertical, 0 | 2) => {
@@ -48,43 +49,75 @@ impl Renderer {
                 }
                 _ => panic!("Unsupported"),
             };
-            texture
-                .update(screen_rects.0, &frames.0.data, 256 * 3)
-                .unwrap();
-            texture
-                .update(screen_rects.1, &frames.1.data, 256 * 3)
-                .unwrap();
+            if debug {
+                texture
+                    .update(screen_rects.0, &frames.0.data, 256 * 3)
+                    .unwrap();
+                texture
+                    .update(screen_rects.1, &frames.1.data, 256 * 3)
+                    .unwrap();
+            }
+
+            let mut bg_frame = Frame::new();
 
             if ppu.vertical_scroll > 0 {
-                let scroll = ppu.vertical_scroll as i32;
-                let scroll_rects = (
-                    Rect::new(256, 240 + scroll, 256, 240 - scroll as u32),
-                    Rect::new(256, 240 + 240 - scroll, 256, scroll as u32),
-                );
+                let scroll = ppu.vertical_scroll as usize;
 
-                texture
-                    .update(scroll_rects.0, &frames.0.data, 256 * 3)
-                    .unwrap();
-                texture
-                    .update(scroll_rects.1, &frames.1.data, 256 * 3)
-                    .unwrap();
+                for y in 0..Frame::HEIGHT - scroll {
+                    for x in 0..Frame::WIDTH {
+                        let pixel = frames.0.pixel(x, y + scroll);
+                        bg_frame.set_pixel(x, y, pixel.0, pixel.1);
+                    }
+                }
+
+                for y in 0..scroll {
+                    for x in 0..Frame::WIDTH {
+                        let pixel = frames.1.pixel(x, y);
+                        bg_frame.set_pixel(x, Frame::HEIGHT - scroll + y, pixel.0, pixel.1);
+                    }
+                }
             } else if ppu.horizontal_scroll > 0 {
-                let scroll = ppu.horizontal_scroll as i32;
-                let scroll_rects = (
-                    Rect::new(256 + scroll, 240, 256 - scroll as u32, 240),
-                    Rect::new(256 + 256 - scroll, 240, scroll as u32, 240),
-                );
+                let scroll = ppu.horizontal_scroll as usize;
 
-                texture
-                    .update(scroll_rects.0, &frames.0.data, 256 * 3)
-                    .unwrap();
-                texture
-                    .update(scroll_rects.1, &frames.1.data, 256 * 3)
-                    .unwrap();
+                for y in 0..Frame::HEIGHT {
+                    for x in 0..Frame::WIDTH - scroll {
+                        let pixel = frames.0.pixel(x + scroll, y);
+                        bg_frame.set_pixel(x, y, pixel.0, pixel.1);
+                    }
+                }
+
+                for y in 0..Frame::HEIGHT {
+                    for x in 0..scroll {
+                        let pixel = frames.1.pixel(x, y);
+                        bg_frame.set_pixel(Frame::WIDTH - scroll + x, y, pixel.0, pixel.1);
+                    }
+                }
             } else {
-                let final_rect = Rect::new(256, 240, 256, 240);
-                texture.update(final_rect, &frames.0.data, 256 * 3).unwrap();
+                bg_frame = frames.0.clone();
             }
+
+            if debug {
+                let sprite_rect = Rect::new(0, 240, 256, 240);
+                texture
+                    .update(sprite_rect, &self.sprite_frame.data, 256 * 3)
+                    .unwrap();
+            }
+
+            for y in 0..240 {
+                for x in 0..256 {
+                    if self.sprite_frame.opaque(x, y) {
+                        let pixel = self.sprite_frame.pixel(x, y);
+                        bg_frame.set_pixel(x, y, pixel.0, pixel.1);
+                    }
+                }
+            }
+
+            let final_rect = if debug {
+                Rect::new(256, 240, 256, 240)
+            } else {
+                Rect::new(0, 0, 256, 240)
+            };
+            texture.update(final_rect, &bg_frame.data, 256 * 3).unwrap();
 
             canvas.copy(&texture, None, None).unwrap();
             canvas.present();
@@ -104,15 +137,26 @@ impl Renderer {
 
         // Draw each tile
         for tile_on_scanline in 0..32 {
-            let (tile_data, tile_palette) = ppu.tile_row_data(screen, y, tile_on_scanline);
+            let (tile_data, tile_palette) = ppu.bg_tile_data(screen, y, tile_on_scanline);
 
             for i in 0..8 {
                 let rgb = self.palette.palette[tile_palette[tile_data[i] as usize] as usize];
-                frame.set_pixel(x + 7 - i, y as usize, rgb);
+                frame.set_pixel(x + 7 - i, y as usize, rgb, tile_data[i] != 0);
             }
             x += 8;
         }
     }
 
-    fn render_sprites(&mut self, ppu: &Ppu) {}
+    fn render_sprites(&mut self, ppu: &Ppu) {
+        let y = ppu.scanline - 1;
+        let line = &ppu.sprite_line;
+        for x in 0..256 {
+            self.sprite_frame.set_pixel(
+                x,
+                y as usize,
+                self.palette.palette[line[x].0 as usize],
+                line[x].1,
+            );
+        }
+    }
 }
