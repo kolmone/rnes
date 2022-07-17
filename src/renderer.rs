@@ -52,7 +52,12 @@ impl Renderer {
             _ => panic!("Unsupported"),
         };
 
-        if ppu.vertical_scroll > 0 {
+        if ppu.vertical_scroll == 0 && ppu.horizontal_scroll == 0 {
+            for x in 0..Frame::WIDTH {
+                let pixel = frames.0.bg_pixel(x, y);
+                self.final_frame.set_bg_pixel(x, y, pixel);
+            }
+        } else if ppu.vertical_scroll > 0 {
             let scroll = ppu.vertical_scroll as usize;
 
             if y < Frame::HEIGHT - scroll {
@@ -75,15 +80,6 @@ impl Renderer {
                 } else {
                     frames.1.bg_pixel(x - (Frame::WIDTH - scroll), y)
                 };
-                self.final_frame.set_bg_pixel(x, y, pixel);
-            }
-        } else {
-            // println!(
-            //     "No scrolling, base nametable {}",
-            //     ppu.controller.base_nametable()
-            // );
-            for x in 0..Frame::WIDTH {
-                let pixel = frames.0.bg_pixel(x, y);
                 self.final_frame.set_bg_pixel(x, y, pixel);
             }
         }
