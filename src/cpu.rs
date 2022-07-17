@@ -736,7 +736,7 @@ mod test {
     }
 
     fn dummy_bus() -> Bus<'static> {
-        Bus::new(dummy_rom(), |_| ())
+        Bus::new(dummy_rom(), |_, _| ())
     }
 
     #[test]

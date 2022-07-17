@@ -1,9 +1,11 @@
 mod bus;
+mod controller;
 mod cpu;
 mod ppu;
 mod renderer;
 
 use bus::{Bus, Rom};
+use controller::{Button, Controller};
 use core::panic;
 use cpu::Cpu;
 use ppu::Ppu;
@@ -15,7 +17,20 @@ use sdl2::{
     pixels::{Color, PixelFormatEnum},
     EventPump,
 };
-use std::{env, thread::sleep, time::Duration};
+use std::{collections::HashMap, env, thread::sleep, time::Duration};
+
+fn build_keymap() -> HashMap<Keycode, Button> {
+    let mut keymap = HashMap::new();
+    keymap.insert(Keycode::Down, Button::Down);
+    keymap.insert(Keycode::Up, Button::Up);
+    keymap.insert(Keycode::Right, Button::Right);
+    keymap.insert(Keycode::Left, Button::Left);
+    keymap.insert(Keycode::Backspace, Button::Select);
+    keymap.insert(Keycode::Return, Button::Start);
+    keymap.insert(Keycode::Z, Button::A);
+    keymap.insert(Keycode::X, Button::B);
+    return keymap;
+}
 
 fn run_rom(file: &str, do_trace: bool, render_debug: bool) {
     let sdl = sdl2::init().unwrap();
@@ -43,24 +58,40 @@ fn run_rom(file: &str, do_trace: bool, render_debug: bool) {
     let mut event_pump = sdl.event_pump().unwrap();
 
     let rom: Vec<u8> = std::fs::read(file).expect("Unable to open rom file!");
-
     let mut renderer = Renderer::new();
-    let bus = Bus::new(Rom::new(rom).unwrap(), |ppu: &Ppu| {
-        renderer.render_line(&ppu, &mut canvas, &mut texture, render_debug)
-    });
+    let keymap = build_keymap();
+
+    let bus = Bus::new(
+        Rom::new(rom).unwrap(),
+        |ppu: &Ppu, controller: &mut Controller| {
+            renderer.render_line(&ppu, &mut canvas, &mut texture, render_debug);
+
+            for event in event_pump.poll_iter() {
+                match event {
+                    Event::Quit { .. } => std::process::exit(0),
+                    Event::KeyDown { keycode, .. } => {
+                        if let Some(key) = keymap.get(&keycode.unwrap_or(Keycode::Ampersand)) {
+                            controller.set_button_state(*key, true);
+                        }
+                    }
+                    Event::KeyUp { keycode, .. } => {
+                        if let Some(key) = keymap.get(&keycode.unwrap_or(Keycode::Ampersand)) {
+                            controller.set_button_state(*key, false);
+                        }
+                    }
+                    _ => { /* do nothing */ }
+                }
+            }
+        },
+    );
     let mut cpu = Cpu::new(bus);
 
     cpu.reset();
+
     cpu.run_with_callback(move |cpu| {
         if do_trace {
             trace(cpu);
-        }
-        // sleep(Duration::new(0, 1000));
-        for event in event_pump.poll_iter() {
-            match event {
-                Event::Quit { .. } => std::process::exit(0),
-                _ => { /* do nothing */ }
-            }
+            // sleep(Duration::new(0, 1000));
         }
     });
 }
@@ -157,7 +188,7 @@ fn run_snake() {
 
     // let mut renderer = Renderer::new();
     let rom: Vec<u8> = std::fs::read("snake.nes").expect("Unable to open snake.nes");
-    let bus = Bus::new(Rom::new(rom).unwrap(), |_| ());
+    let bus = Bus::new(Rom::new(rom).unwrap(), |_, _| ());
     let mut cpu = Cpu::new(bus);
     cpu.reset();
 
@@ -205,7 +236,7 @@ fn trace(cpu: &mut Cpu) {
 
 fn run_nestest() {
     let rom: Vec<u8> = std::fs::read("nestest.nes").expect("Unable to open nestest.nes");
-    let bus = Bus::new(Rom::new(rom).unwrap(), |_| ());
+    let bus = Bus::new(Rom::new(rom).unwrap(), |_, _| ());
     let mut cpu = Cpu::new(bus);
     cpu.reset();
     cpu.program_counter = 0xc000;

@@ -1,14 +1,18 @@
 use std::fmt;
 
-use crate::ppu::Ppu;
+use crate::{
+    controller::{self, Controller},
+    ppu::Ppu,
+};
 
 pub struct Bus<'call> {
     ram: [u8; 0x800],
     prg: Vec<u8>,
     ppu: Ppu,
     cycles: usize,
+    controller: Controller,
 
-    render_callback: Box<dyn FnMut(&Ppu) + 'call>,
+    game_callback: Box<dyn FnMut(&Ppu, &mut Controller) + 'call>,
 }
 
 #[derive(Debug, Copy, Clone, PartialEq)]
@@ -82,27 +86,30 @@ const PPU_REGISTERS_START: u16 = 0x2000;
 const PPU_REGISTERS_END: u16 = 0x3FFF;
 const OAM_DMA_ADDR: u16 = 0x4014;
 const ROM_START: u16 = 0x8000;
+const CONTROLLER1_ADDR: u16 = 0x4016;
+const CONTROLLER2_ADDR: u16 = 0x4017;
 
 const RAM_ADDR_MIRROR_MASK: u16 = 0x07FF;
 
 impl<'call> Bus<'call> {
-    pub fn new<F>(rom: Rom, render_callback: F) -> Self
+    pub fn new<F>(rom: Rom, game_callback: F) -> Self
     where
-        F: FnMut(&Ppu) + 'call,
+        F: FnMut(&Ppu, &mut controller::Controller) + 'call,
     {
         Self {
             ram: [0; 0x800],
             prg: rom.prg,
             ppu: Ppu::new(rom.chr, rom.mirroring),
+            controller: Controller::new(),
             cycles: 0,
-            render_callback: Box::from(render_callback),
+            game_callback: Box::from(game_callback),
         }
     }
 
     pub fn tick(&mut self, cycles: u8) {
         self.cycles += cycles as usize;
         if self.ppu.tick(cycles * 3) {
-            (self.render_callback)(&self.ppu);
+            (self.game_callback)(&self.ppu, &mut self.controller);
         }
     }
 
@@ -115,8 +122,10 @@ impl<'call> Bus<'call> {
             RAM_START..=RAM_END => self.ram[(addr & RAM_ADDR_MIRROR_MASK) as usize],
             PPU_REGISTERS_START..=PPU_REGISTERS_END => self.ppu.read(addr),
             ROM_START.. => self.read_prg(addr),
+            CONTROLLER1_ADDR => self.controller.read(),
+            CONTROLLER2_ADDR => 0,
             _ => {
-                // println!("Read from unknown address 0x{:X}", addr);
+                println!("Read from unknown address 0x{:X}", addr);
                 0
             }
         }
@@ -134,7 +143,9 @@ impl<'call> Bus<'call> {
             PPU_REGISTERS_START..=PPU_REGISTERS_END => self.ppu.write(addr, data),
             OAM_DMA_ADDR => self.oam_dma(data),
             ROM_START.. => println!("Write to ROM space at address 0x{:X}", addr),
-            _ => (), // println!("Write to unknown address 0x{:X}", addr),
+            CONTROLLER1_ADDR => self.controller.write(data),
+            // _ => (),
+            _ => println!("Write to unknown address 0x{:X}", addr),
         }
     }
 
@@ -159,8 +170,8 @@ impl<'call> Bus<'call> {
         for i in 0..256 {
             let oam_data = self.read(start_addr + i);
             self.write(0x2004, oam_data);
-            self.ppu.tick(6);
+            self.tick(2);
         }
-        self.ppu.tick(3);
+        self.tick(1);
     }
 }
