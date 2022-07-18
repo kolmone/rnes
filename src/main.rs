@@ -227,7 +227,7 @@ fn trace(cpu: &mut Cpu) {
     //     cpu.register_a,
     //     cpu.register_x,
     //     cpu.register_y,
-    //     u8::from(cpu.status),
+    //     cpu.status.0,
     //     cpu.stack_pointer
     // );
     println!(
@@ -237,7 +237,7 @@ fn trace(cpu: &mut Cpu) {
         cpu.register_a,
         cpu.register_x,
         cpu.register_y,
-        u8::from(cpu.status),
+        cpu.status.0,
         cpu.stack_pointer
     );
 }

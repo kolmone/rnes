@@ -10,14 +10,16 @@ pub struct Cpu<'a> {
     pub register_y: u8,
     pub program_counter: u16,
     pub stack_pointer: u8,
-    pub status: StatusFlags,
+    pub status: StatusReg,
     pub bus: Bus<'a>,
     pub mnemonic: String,
     pub cycles: u8,
 }
 
 bitfield! {
-    struct StatusReg(u8);
+    #[derive(Copy, Clone, PartialEq, Eq)]
+    pub struct StatusReg(pub u8);
+    pub new();
 
     field carry:       bool = [0];
     field zero:        bool = [1];
@@ -29,55 +31,7 @@ bitfield! {
     field negative:    bool = [7];
 }
 
-#[derive(Debug, Copy, Clone)]
-pub struct StatusFlags {
-    carry: bool,
-    zero: bool,
-    irq_disable: bool,
-    decimal: bool,
-    break_cmd: bool,
-    unused: bool,
-    overflow: bool,
-    negative: bool,
-}
-
-impl From<StatusFlags> for u8 {
-    fn from(status: StatusFlags) -> Self {
-        (status.carry as u8) << 0
-            | (status.zero as u8) << 1
-            | (status.irq_disable as u8) << 2
-            | (status.decimal as u8) << 3
-            | 0
-            | (status.unused as u8) << 5
-            | (status.overflow as u8) << 6
-            | (status.negative as u8) << 7
-    }
-}
-
-impl From<u8> for StatusFlags {
-    fn from(status: u8) -> Self {
-        StatusFlags {
-            carry: status & CARRY_FLAG != 0,
-            zero: status & ZERO_FLAG != 0,
-            irq_disable: status & IRQ_DISABLE_FLAG != 0,
-            decimal: status & DECIMAL_FLAG != 0,
-            break_cmd: status & BREAK_FLAG != 0,
-            unused: true,
-            overflow: status & OVERFLOW_FLAG != 0,
-            negative: status & NEGATIVE_FLAG != 0,
-        }
-    }
-}
-
-const CARRY_FLAG: u8 = 0x1 << 0;
-const ZERO_FLAG: u8 = 0x1 << 1;
-const IRQ_DISABLE_FLAG: u8 = 0x1 << 2;
-const DECIMAL_FLAG: u8 = 0x1 << 3;
-const BREAK_FLAG: u8 = 0x1 << 4;
-const OVERFLOW_FLAG: u8 = 0x1 << 6;
-const NEGATIVE_FLAG: u8 = 0x1 << 7;
-
-const SIGN_MASK: u8 = 0x1 << 7;
+const SIGN_MASK:  u8 = 0x1 << 7;
 const RESET_ADDR: u16 = 0xFFFC;
 const STACK_PAGE: u16 = 0x0100;
 
@@ -89,16 +43,7 @@ impl<'a> Cpu<'a> {
             register_y: 0,
             program_counter: 0,
             stack_pointer: 0,
-            status: StatusFlags {
-                carry: false,
-                zero: false,
-                irq_disable: true,
-                decimal: false,
-                break_cmd: false,
-                unused: true,
-                overflow: false,
-                negative: false,
-            },
+            status: StatusReg(0).with_unused(true).with_irq_disable(true),
             bus,
             mnemonic: "".to_owned(),
             cycles: 0,
@@ -110,23 +55,14 @@ impl<'a> Cpu<'a> {
         self.register_x = 0;
         self.register_y = 0;
         self.stack_pointer = 0xfd;
-        self.status = StatusFlags {
-            carry: false,
-            zero: false,
-            irq_disable: true,
-            decimal: false,
-            break_cmd: false,
-            unused: true,
-            overflow: false,
-            negative: false,
-        };
+        self.status = StatusReg(0).with_irq_disable(true).with_unused(true);
 
         self.program_counter = self.bus.read_u16(RESET_ADDR);
     }
 
     fn update_zero_neg(&mut self, val: u8) {
-        self.status.zero = val == 0;
-        self.status.negative = val >= 128;
+        self.status.set_zero(val == 0);
+        self.status.set_negative(val >= 128);
     }
 
     /// Pushes a 8-bit value onto the stack, decrementing stack pointer
@@ -226,17 +162,16 @@ impl<'a> Cpu<'a> {
     fn adc(&mut self, mode: &AddressingMode) {
         let addr = self.get_operand_addr(mode);
         let operand = self.bus.read(addr);
-        let carry = if self.status.carry { 1 } else { 0 };
+        let carry = if self.status.carry() { 1 } else { 0 };
 
         let orig_a = self.register_a;
         self.register_a = orig_a.wrapping_add(operand).wrapping_add(carry);
 
         // Overflow if both inputs are different sign than result
-        self.status.overflow =
-            (orig_a ^ self.register_a) & (operand ^ self.register_a) & SIGN_MASK != 0;
+        self.status.set_overflow ((orig_a ^ self.register_a) & (operand ^ self.register_a) & SIGN_MASK != 0);
 
         // Carry if new value is smaller, or value from operand was 0xFF and carry was set
-        self.status.carry = self.register_a < orig_a || self.register_a == orig_a && carry > 0;
+        self.status.set_carry(self.register_a < orig_a || self.register_a == orig_a && carry > 0);
 
         self.update_zero_neg(self.register_a);
     }
@@ -252,14 +187,14 @@ impl<'a> Cpu<'a> {
         // MSB shifts to carry bit
         match mode {
             &AddressingMode::NoneAddressing => {
-                self.status.carry = self.register_a & SIGN_MASK != 0;
+                self.status.set_carry(self.register_a & SIGN_MASK != 0);
                 self.register_a <<= 1;
                 self.update_zero_neg(self.register_a);
             }
             _ => {
                 let addr = self.get_operand_addr(mode);
                 let mut operand = self.bus.read(addr);
-                self.status.carry = operand & SIGN_MASK != 0;
+                self.status.set_carry(operand & SIGN_MASK != 0);
                 operand <<= 1;
                 self.bus.write(addr, operand);
                 self.update_zero_neg(operand);
@@ -273,49 +208,49 @@ impl<'a> Cpu<'a> {
     }
 
     fn bcc(&mut self) {
-        if !self.status.carry {
+        if !self.status.carry() {
             self.branch_relative();
         }
     }
 
     fn bcs(&mut self) {
-        if self.status.carry {
+        if self.status.carry() {
             self.branch_relative();
         }
     }
 
     fn beq(&mut self) {
-        if self.status.zero {
+        if self.status.zero() {
             self.branch_relative();
         }
     }
 
     fn bmi(&mut self) {
-        if self.status.negative {
+        if self.status.negative() {
             self.branch_relative();
         }
     }
 
     fn bne(&mut self) {
-        if !self.status.zero {
+        if !self.status.zero() {
             self.branch_relative();
         }
     }
 
     fn bpl(&mut self) {
-        if !self.status.negative {
+        if !self.status.negative() {
             self.branch_relative();
         }
     }
 
     fn bvc(&mut self) {
-        if !self.status.overflow {
+        if !self.status.overflow() {
             self.branch_relative();
         }
     }
 
     fn bvs(&mut self) {
-        if self.status.overflow {
+        if self.status.overflow() {
             self.branch_relative();
         }
     }
@@ -323,17 +258,17 @@ impl<'a> Cpu<'a> {
     fn bit(&mut self, mode: &AddressingMode) {
         let addr = self.get_operand_addr(mode);
         let operand = self.bus.read(addr);
-        self.status.zero = self.register_a & operand == 0;
-        self.status.overflow = operand & 0x1 << 6 != 0; // store bit 6
-        self.status.negative = operand & 0x1 << 7 != 0; // and bit 7
+        self.status.set_zero(self.register_a & operand == 0);
+        self.status.set_overflow(operand & 0x1 << 6 != 0); // store bit 6
+        self.status.set_negative(operand & 0x1 << 7 != 0); // and bit 7
     }
 
     fn compare(&mut self, source: u8, mode: &AddressingMode) {
         let addr = self.get_operand_addr(mode);
         let operand = self.bus.read(addr);
-        self.status.carry = source >= operand;
-        self.status.zero = source == operand;
-        self.status.negative = source.wrapping_sub(operand) & SIGN_MASK != 0;
+        self.status.set_carry(source >= operand);
+        self.status.set_zero(source == operand);
+        self.status.set_negative(source.wrapping_sub(operand) & SIGN_MASK != 0);
     }
 
     fn dec(&mut self, mode: &AddressingMode) {
@@ -425,14 +360,14 @@ impl<'a> Cpu<'a> {
         // LSB shifts to carry bit
         match mode {
             &AddressingMode::NoneAddressing => {
-                self.status.carry = self.register_a & 0x1 != 0;
+                self.status.set_carry(self.register_a & 0x1 != 0);
                 self.register_a >>= 1;
                 self.update_zero_neg(self.register_a);
             }
             _ => {
                 let addr = self.get_operand_addr(mode);
                 let mut operand = self.bus.read(addr);
-                self.status.carry = operand & 0x1 != 0;
+                self.status.set_carry(operand & 0x1 != 0);
                 operand >>= 1;
                 self.bus.write(addr, operand);
                 self.update_zero_neg(operand);
@@ -451,8 +386,8 @@ impl<'a> Cpu<'a> {
         // Carry bit shifts to LSB, MSB shifts to carry bit
         match mode {
             &AddressingMode::NoneAddressing => {
-                let carry_in = if self.status.carry { 0x01 } else { 0x00 };
-                self.status.carry = self.register_a & SIGN_MASK != 0;
+                let carry_in = if self.status.carry() { 0x01 } else { 0x00 };
+                self.status.set_carry(self.register_a & SIGN_MASK != 0);
                 self.register_a <<= 1;
                 self.register_a |= carry_in;
                 self.update_zero_neg(self.register_a);
@@ -460,8 +395,8 @@ impl<'a> Cpu<'a> {
             _ => {
                 let addr = self.get_operand_addr(mode);
                 let mut operand = self.bus.read(addr);
-                let carry_in = if self.status.carry { 0x01 } else { 0x00 };
-                self.status.carry = operand & SIGN_MASK != 0;
+                let carry_in = if self.status.carry() { 0x01 } else { 0x00 };
+                self.status.set_carry(operand & SIGN_MASK != 0);
                 operand <<= 1;
                 operand |= carry_in;
                 self.bus.write(addr, operand);
@@ -475,8 +410,8 @@ impl<'a> Cpu<'a> {
         // Carry bit shifts to MSB, LSB shifts to carry bit
         match mode {
             &AddressingMode::NoneAddressing => {
-                let carry_in = if self.status.carry { 0x80 } else { 0x00 };
-                self.status.carry = self.register_a & 0x01 != 0;
+                let carry_in = if self.status.carry() { 0x80 } else { 0x00 };
+                self.status.set_carry(self.register_a & 0x01 != 0);
                 self.register_a >>= 1;
                 self.register_a |= carry_in;
                 self.update_zero_neg(self.register_a);
@@ -484,8 +419,8 @@ impl<'a> Cpu<'a> {
             _ => {
                 let addr = self.get_operand_addr(mode);
                 let mut operand = self.bus.read(addr);
-                let carry_in = if self.status.carry { 0x80 } else { 0x00 };
-                self.status.carry = operand & 0x01 != 0;
+                let carry_in = if self.status.carry() { 0x80 } else { 0x00 };
+                self.status.set_carry(operand & 0x01 != 0);
                 operand >>= 1;
                 operand |= carry_in;
                 self.bus.write(addr, operand);
@@ -495,7 +430,7 @@ impl<'a> Cpu<'a> {
     }
 
     fn rti(&mut self) {
-        self.status = self.pull_stack().into();
+        self.status.0 = self.pull_stack() & 0xEF | 0x20;
         self.program_counter = self.pull_stack_u16();
         // println!("Returning from exception");
     }
@@ -508,7 +443,7 @@ impl<'a> Cpu<'a> {
         let addr = self.get_operand_addr(mode);
         let operand = self.bus.read(addr);
 
-        let operand_neg = if self.status.carry {
+        let operand_neg = if self.status.carry() {
             (!operand).wrapping_add(1)
         } else {
             !operand
@@ -518,12 +453,12 @@ impl<'a> Cpu<'a> {
         self.register_a = orig_a.wrapping_add(operand_neg);
 
         // Overflow if both inputs are different sign than result
-        self.status.overflow =
-            (orig_a ^ self.register_a) & (operand_neg ^ self.register_a) & SIGN_MASK != 0;
+        self.status.set_overflow(
+            (orig_a ^ self.register_a) & (operand_neg ^ self.register_a) & SIGN_MASK != 0);
 
         // Carry if new value is smaller, or current value is same as original and carry was set
-        self.status.carry =
-            self.register_a < orig_a || self.register_a == orig_a && self.status.carry;
+        self.status.set_carry(
+            self.register_a < orig_a || self.register_a == orig_a && self.status.carry());
 
         self.update_zero_neg(self.register_a);
     }
@@ -609,8 +544,8 @@ impl<'a> Cpu<'a> {
     fn nmi(&mut self) {
         println!("In NMI");
         self.push_stack_u16(self.program_counter);
-        self.push_stack(self.status.into());
-        self.status.irq_disable = true;
+        self.push_stack(self.status.0);
+        self.status.set_irq_disable(true);
 
         self.bus.tick(2);
         let target = self.bus.read_u16(0xFFFA);
@@ -647,10 +582,10 @@ impl<'a> Cpu<'a> {
                 "BRK" => return,
                 "BVC" => self.bvc(),
                 "BVS" => self.bvs(),
-                "CLC" => self.status.carry = false,
-                "CLD" => self.status.decimal = false,
-                "CLI" => self.status.irq_disable = false,
-                "CLV" => self.status.overflow = false,
+                "CLC" => self.status.set_carry(false),
+                "CLD" => self.status.set_decimal(false),
+                "CLI" => self.status.set_irq_disable(false),
+                "CLV" => self.status.set_overflow(false),
                 "CMP" => self.compare(self.register_a, &instruction.addressing_mode),
                 "CPX" => self.compare(self.register_x, &instruction.addressing_mode),
                 "CPY" => self.compare(self.register_y, &instruction.addressing_mode),
@@ -670,23 +605,20 @@ impl<'a> Cpu<'a> {
                 "NOP" => (),
                 "ORA" => self.ora(&instruction.addressing_mode),
                 "PHA" => self.push_stack(self.register_a),
-                "PHP" => {
-                    let status: u8 = self.status.into();
-                    self.push_stack(status | BREAK_FLAG)
-                }
+                "PHP" => self.push_stack(self.status.with_break_cmd(true).0),
                 "PLA" => {
                     self.register_a = self.pull_stack();
                     self.update_zero_neg(self.register_a)
                 }
-                "PLP" => self.status = self.pull_stack().into(),
+                "PLP" => self.status.0 = self.pull_stack() & 0xEF | 0x20,
                 "ROL" => self.rol(&instruction.addressing_mode),
                 "ROR" => self.ror(&instruction.addressing_mode),
                 "RTI" => self.rti(),
                 "RTS" => self.rts(),
                 "SBC" => self.sbc(&instruction.addressing_mode),
-                "SEC" => self.status.carry = true,
-                "SED" => self.status.decimal = true,
-                "SEI" => self.status.irq_disable = true,
+                "SEC" => self.status.set_carry(true),
+                "SED" => self.status.set_decimal(true),
+                "SEI" => self.status.set_irq_disable(true),
                 "STA" => {
                     let addr = self.get_operand_addr(&instruction.addressing_mode);
                     self.bus.write(addr, self.register_a)
@@ -759,8 +691,8 @@ mod test {
         cpu._setup(vec![0xa9, 0x7F]);
         cpu._run();
         assert_eq!(cpu.register_a, 0x7F);
-        assert!(!cpu.status.zero);
-        assert!(!cpu.status.negative);
+        assert!(!cpu.status.zero());
+        assert!(!cpu.status.negative());
     }
 
     #[test]
@@ -770,8 +702,8 @@ mod test {
         cpu._setup(vec![0xa9, 0x00]);
         cpu._run();
         assert_eq!(cpu.register_a, 0x00);
-        assert!(cpu.status.zero);
-        assert!(!cpu.status.negative);
+        assert!(cpu.status.zero());
+        assert!(!cpu.status.negative());
     }
 
     #[test]
@@ -781,8 +713,8 @@ mod test {
         cpu._setup(vec![0xa9, 0xFF]);
         cpu._run();
         assert_eq!(cpu.register_a, 0xFF);
-        assert!(!cpu.status.zero);
-        assert!(cpu.status.negative);
+        assert!(!cpu.status.zero());
+        assert!(cpu.status.negative());
     }
 
     #[test]
@@ -793,8 +725,8 @@ mod test {
         cpu.register_a = 0xFF;
         cpu._run();
         assert_eq!(cpu.register_x, 0xFF);
-        assert!(!cpu.status.zero);
-        assert!(cpu.status.negative);
+        assert!(!cpu.status.zero());
+        assert!(cpu.status.negative());
     }
 
     #[test]
@@ -805,8 +737,8 @@ mod test {
         cpu.register_x = 0x56;
         cpu._run();
         assert_eq!(cpu.register_x, 0x57);
-        assert!(!cpu.status.zero);
-        assert!(!cpu.status.negative);
+        assert!(!cpu.status.zero());
+        assert!(!cpu.status.negative());
     }
 
     #[test]
@@ -817,8 +749,8 @@ mod test {
         cpu.register_x = 0x7F;
         cpu._run();
         assert_eq!(cpu.register_x, 0x80);
-        assert!(!cpu.status.zero);
-        assert!(cpu.status.negative);
+        assert!(!cpu.status.zero());
+        assert!(cpu.status.negative());
     }
 
     #[test]
@@ -829,8 +761,8 @@ mod test {
         cpu.register_x = 0xFF;
         cpu._run();
         assert_eq!(cpu.register_x, 0x0);
-        assert!(cpu.status.zero);
-        assert!(!cpu.status.negative);
+        assert!(cpu.status.zero());
+        assert!(!cpu.status.negative());
     }
 
     #[test]
@@ -841,8 +773,8 @@ mod test {
         cpu.register_y = 0x50;
         cpu._run();
         assert_eq!(cpu.register_y, 0x51);
-        assert!(!cpu.status.zero);
-        assert!(!cpu.status.negative);
+        assert!(!cpu.status.zero());
+        assert!(!cpu.status.negative());
     }
 
     #[test]
@@ -941,8 +873,8 @@ mod test {
         cpu.bus.write(4, 0x7f);
         cpu._run();
         assert_eq!(cpu.bus.read(4), 0x80);
-        assert!(!cpu.status.zero);
-        assert!(cpu.status.negative);
+        assert!(!cpu.status.zero());
+        assert!(cpu.status.negative());
     }
 
     #[test]
@@ -955,10 +887,10 @@ mod test {
         cpu.register_y = 8;
         cpu._run();
         assert_eq!(cpu.register_a, 0x60);
-        assert!(!cpu.status.zero);
-        assert!(!cpu.status.negative);
-        assert!(cpu.status.carry);
-        assert!(cpu.status.overflow);
+        assert!(!cpu.status.zero());
+        assert!(!cpu.status.negative());
+        assert!(cpu.status.carry());
+        assert!(cpu.status.overflow());
     }
 
     #[test]
@@ -969,13 +901,13 @@ mod test {
         cpu.register_a = 0x30;
         cpu.register_x = 5;
         cpu.register_y = 8;
-        cpu.status.carry = true;
+        cpu.status.set_carry(true);
         cpu._run();
         assert_eq!(cpu.register_a, 0x81); // 80 + 48 + 1 = negative number
-        assert!(!cpu.status.zero);
-        assert!(cpu.status.negative);
-        assert!(!cpu.status.carry);
-        assert!(cpu.status.overflow);
+        assert!(!cpu.status.zero());
+        assert!(cpu.status.negative());
+        assert!(!cpu.status.carry());
+        assert!(cpu.status.overflow());
     }
 
     #[test]
@@ -986,8 +918,8 @@ mod test {
         cpu.register_a = 0xf0;
         cpu._run();
         assert_eq!(cpu.register_a, 0xa0);
-        assert!(!cpu.status.zero);
-        assert!(cpu.status.negative);
+        assert!(!cpu.status.zero());
+        assert!(cpu.status.negative());
     }
 
     #[test]
@@ -998,9 +930,9 @@ mod test {
         cpu.register_a = 0xAA;
         cpu._run();
         assert_eq!(cpu.register_a, 0x54);
-        assert!(!cpu.status.zero);
-        assert!(!cpu.status.negative);
-        assert!(cpu.status.carry);
+        assert!(!cpu.status.zero());
+        assert!(!cpu.status.negative());
+        assert!(cpu.status.carry());
     }
 
     #[test]
@@ -1011,9 +943,9 @@ mod test {
         cpu.bus.write(0x05aa, 0x55);
         cpu._run();
         assert_eq!(cpu.bus.read(0x05aa), 0xaa);
-        assert!(!cpu.status.zero);
-        assert!(cpu.status.negative);
-        assert!(!cpu.status.carry);
+        assert!(!cpu.status.zero());
+        assert!(cpu.status.negative());
+        assert!(!cpu.status.carry());
     }
 
     #[test]
@@ -1041,7 +973,7 @@ mod test {
         let bus = dummy_bus();
         let mut cpu = Cpu::new(bus);
         cpu._setup(vec![0x90, 0x15, 0xB0, 0x15]);
-        cpu.status.carry = true;
+        cpu.status.set_carry(true);
         cpu._run();
         // Address of next instruction (4) + jump offset (0x15) + 1 (BRK instruction)
         assert_eq!(cpu.program_counter, 0x61a);
@@ -1062,7 +994,7 @@ mod test {
         let bus = dummy_bus();
         let mut cpu = Cpu::new(bus);
         cpu._setup(vec![0xD0, 0x15, 0xF0, 0x15]);
-        cpu.status.zero = true;
+        cpu.status.set_zero(true);
         cpu._run();
         // Address of next instruction (4) + jump offset (0x15) + 1 (BRK instruction)
         assert_eq!(cpu.program_counter, 0x61a);
@@ -1076,9 +1008,9 @@ mod test {
         cpu.bus.write(0, 0xFF);
         cpu.register_a = 0xC0;
         cpu._run();
-        assert!(!cpu.status.zero);
-        assert!(cpu.status.negative);
-        assert!(cpu.status.overflow);
+        assert!(!cpu.status.zero());
+        assert!(cpu.status.negative());
+        assert!(cpu.status.overflow());
     }
 
     #[test]
@@ -1089,9 +1021,9 @@ mod test {
         cpu.bus.write(0, 0xF0);
         cpu.register_a = 0x0F;
         cpu._run();
-        assert!(cpu.status.zero);
-        assert!(cpu.status.negative);
-        assert!(cpu.status.overflow);
+        assert!(cpu.status.zero());
+        assert!(cpu.status.negative());
+        assert!(cpu.status.overflow());
     }
 
     #[test]
@@ -1109,7 +1041,7 @@ mod test {
         let bus = dummy_bus();
         let mut cpu = Cpu::new(bus);
         cpu._setup(vec![0x10, 0x15, 0x30, 0x15]);
-        cpu.status.negative = true;
+        cpu.status.set_negative(true);
         cpu._run();
         // Address of next instruction (4) + jump offset (0x15) + 1 (BRK instruction)
         assert_eq!(cpu.program_counter, 0x61a);
@@ -1130,7 +1062,7 @@ mod test {
         let bus = dummy_bus();
         let mut cpu = Cpu::new(bus);
         cpu._setup(vec![0x50, 0x15, 0x70, 0x15]);
-        cpu.status.overflow = true;
+        cpu.status.set_overflow(true);
         cpu._run();
         // Address of next instruction (4) + jump offset (0x15) + 1 (BRK instruction)
         assert_eq!(cpu.program_counter, 0x61a);
@@ -1141,9 +1073,9 @@ mod test {
         let bus = dummy_bus();
         let mut cpu = Cpu::new(bus);
         cpu._setup(vec![0x18]);
-        cpu.status.carry = true;
+        cpu.status.set_carry(true);
         cpu._run();
-        assert!(!cpu.status.carry);
+        assert!(!cpu.status.carry());
     }
 
     #[test]
@@ -1151,9 +1083,9 @@ mod test {
         let bus = dummy_bus();
         let mut cpu = Cpu::new(bus);
         cpu._setup(vec![0xd8]);
-        cpu.status.decimal = true;
+        cpu.status.set_decimal(true);
         cpu._run();
-        assert!(!cpu.status.decimal);
+        assert!(!cpu.status.decimal());
     }
 
     #[test]
@@ -1161,9 +1093,9 @@ mod test {
         let bus = dummy_bus();
         let mut cpu = Cpu::new(bus);
         cpu._setup(vec![0x58]);
-        cpu.status.irq_disable = true;
+        cpu.status.set_irq_disable(true);
         cpu._run();
-        assert!(!cpu.status.irq_disable);
+        assert!(!cpu.status.irq_disable());
     }
 
     #[test]
@@ -1171,9 +1103,9 @@ mod test {
         let bus = dummy_bus();
         let mut cpu = Cpu::new(bus);
         cpu._setup(vec![0xb8]);
-        cpu.status.overflow = true;
+        cpu.status.set_overflow(true);
         cpu._run();
-        assert!(!cpu.status.overflow);
+        assert!(!cpu.status.overflow());
     }
 
     #[test]
@@ -1183,9 +1115,9 @@ mod test {
         cpu._setup(vec![0xC9, 0x10]);
         cpu.register_a = 0x20;
         cpu._run();
-        assert!(cpu.status.carry);
-        assert!(!cpu.status.zero);
-        assert!(!cpu.status.negative);
+        assert!(cpu.status.carry());
+        assert!(!cpu.status.zero());
+        assert!(!cpu.status.negative());
     }
 
     #[test]
@@ -1195,9 +1127,9 @@ mod test {
         cpu._setup(vec![0xC9, 0xc0]);
         cpu.register_a = 0xc0;
         cpu._run();
-        assert!(cpu.status.carry);
-        assert!(cpu.status.zero);
-        assert!(!cpu.status.negative);
+        assert!(cpu.status.carry());
+        assert!(cpu.status.zero());
+        assert!(!cpu.status.negative());
     }
 
     #[test]
@@ -1207,9 +1139,9 @@ mod test {
         cpu._setup(vec![0xC9, 0x20]);
         cpu.register_a = 0x10;
         cpu._run();
-        assert!(!cpu.status.carry);
-        assert!(!cpu.status.zero);
-        assert!(cpu.status.negative);
+        assert!(!cpu.status.carry());
+        assert!(!cpu.status.zero());
+        assert!(cpu.status.negative());
     }
 
     #[test]
@@ -1219,9 +1151,9 @@ mod test {
         cpu._setup(vec![0xe0, 0x10]);
         cpu.register_x = 0x20;
         cpu._run();
-        assert!(cpu.status.carry);
-        assert!(!cpu.status.zero);
-        assert!(!cpu.status.negative);
+        assert!(cpu.status.carry());
+        assert!(!cpu.status.zero());
+        assert!(!cpu.status.negative());
     }
 
     #[test]
@@ -1231,9 +1163,9 @@ mod test {
         cpu._setup(vec![0xC0, 0x20]);
         cpu.register_y = 0x10;
         cpu._run();
-        assert!(!cpu.status.carry);
-        assert!(!cpu.status.zero);
-        assert!(cpu.status.negative);
+        assert!(!cpu.status.carry());
+        assert!(!cpu.status.zero());
+        assert!(cpu.status.negative());
     }
 
     #[test]
@@ -1246,8 +1178,8 @@ mod test {
         cpu.bus.write(0x50, 0x01);
         cpu._run();
         assert_eq!(cpu.bus.read(0x50), 0x0);
-        assert!(cpu.status.zero);
-        assert!(!cpu.status.negative);
+        assert!(cpu.status.zero());
+        assert!(!cpu.status.negative());
     }
 
     #[test]
@@ -1258,8 +1190,8 @@ mod test {
         cpu.register_x = 0x80;
         cpu._run();
         assert_eq!(cpu.register_x, 0x7F);
-        assert!(!cpu.status.zero);
-        assert!(!cpu.status.negative);
+        assert!(!cpu.status.zero());
+        assert!(!cpu.status.negative());
     }
 
     #[test]
@@ -1270,8 +1202,8 @@ mod test {
         cpu.register_y = 0x81;
         cpu._run();
         assert_eq!(cpu.register_y, 0x80);
-        assert!(!cpu.status.zero);
-        assert!(cpu.status.negative);
+        assert!(!cpu.status.zero());
+        assert!(cpu.status.negative());
     }
 
     #[test]
@@ -1282,8 +1214,8 @@ mod test {
         cpu.register_a = 0xaa;
         cpu._run();
         assert_eq!(cpu.register_a, 0x00);
-        assert!(cpu.status.zero);
-        assert!(!cpu.status.negative);
+        assert!(cpu.status.zero());
+        assert!(!cpu.status.negative());
     }
 
     #[test]
@@ -1294,8 +1226,8 @@ mod test {
         cpu.register_a = 0xa5;
         cpu._run();
         assert_eq!(cpu.register_a, 0x0F);
-        assert!(!cpu.status.zero);
-        assert!(!cpu.status.negative);
+        assert!(!cpu.status.zero());
+        assert!(!cpu.status.negative());
     }
 
     #[test]
@@ -1345,8 +1277,8 @@ mod test {
         cpu.bus.write(0x7f, 0x90);
         cpu._run();
         assert_eq!(cpu.register_x, 0x90);
-        assert!(!cpu.status.zero);
-        assert!(cpu.status.negative);
+        assert!(!cpu.status.zero());
+        assert!(cpu.status.negative());
     }
 
     #[test]
@@ -1357,8 +1289,8 @@ mod test {
         cpu.register_y = 0xff;
         cpu._run();
         assert_eq!(cpu.register_y, 0x00);
-        assert!(cpu.status.zero);
-        assert!(!cpu.status.negative);
+        assert!(cpu.status.zero());
+        assert!(!cpu.status.negative());
     }
 
     #[test]
@@ -1369,9 +1301,9 @@ mod test {
         cpu.register_a = 0x01;
         cpu._run();
         assert_eq!(cpu.register_a, 0x00);
-        assert!(cpu.status.carry);
-        assert!(cpu.status.zero);
-        assert!(!cpu.status.negative);
+        assert!(cpu.status.carry());
+        assert!(cpu.status.zero());
+        assert!(!cpu.status.negative());
     }
 
     #[test]
@@ -1391,8 +1323,8 @@ mod test {
         cpu.register_a = 0x55;
         cpu._run();
         assert_eq!(cpu.register_a, 0xf7);
-        assert!(!cpu.status.zero);
-        assert!(cpu.status.negative);
+        assert!(!cpu.status.zero());
+        assert!(cpu.status.negative());
     }
 
     #[test]
@@ -1413,8 +1345,8 @@ mod test {
         let mut cpu = Cpu::new(bus);
         cpu._setup(vec![0x08]);
         cpu.stack_pointer = 0x00;
-        cpu.status.carry = true;
-        cpu.status.negative = true;
+        cpu.status.set_carry(true);
+        cpu.status.set_negative(true);
         cpu._run();
         assert_eq!(cpu.bus.read(0x0100), 0xb5);
         assert_eq!(cpu.stack_pointer, 0xff);
@@ -1440,8 +1372,8 @@ mod test {
         cpu.stack_pointer = 0xff;
         cpu.bus.write(0x0100, 0x81);
         cpu._run();
-        assert!(cpu.status.carry);
-        assert!(cpu.status.negative);
+        assert!(cpu.status.carry());
+        assert!(cpu.status.negative());
         assert_eq!(cpu.stack_pointer, 0x00);
     }
 
@@ -1451,10 +1383,10 @@ mod test {
         let mut cpu = Cpu::new(bus);
         cpu._setup(vec![0x2a]);
         cpu.register_a = 0x42;
-        cpu.status.carry = true;
+        cpu.status.set_carry(true);
         cpu._run();
-        assert!(!cpu.status.carry);
-        assert!(cpu.status.negative);
+        assert!(!cpu.status.carry());
+        assert!(cpu.status.negative());
         assert_eq!(cpu.register_a, 0x85);
     }
 
@@ -1465,8 +1397,8 @@ mod test {
         cpu._setup(vec![0x26, 0x01]);
         cpu.bus.write(0x0001, 0x87);
         cpu._run();
-        assert!(cpu.status.carry);
-        assert!(!cpu.status.negative);
+        assert!(cpu.status.carry());
+        assert!(!cpu.status.negative());
         assert_eq!(cpu.bus.read(0x0001), 0x0E);
     }
 
@@ -1476,10 +1408,10 @@ mod test {
         let mut cpu = Cpu::new(bus);
         cpu._setup(vec![0x6a]);
         cpu.register_a = 0x42;
-        cpu.status.carry = true;
+        cpu.status.set_carry(true);
         cpu._run();
-        assert!(!cpu.status.carry);
-        assert!(cpu.status.negative);
+        assert!(!cpu.status.carry());
+        assert!(cpu.status.negative());
         assert_eq!(cpu.register_a, 0xa1);
     }
 
@@ -1490,8 +1422,8 @@ mod test {
         cpu._setup(vec![0x66, 0x01]);
         cpu.bus.write(0x0001, 0x87);
         cpu._run();
-        assert!(cpu.status.carry);
-        assert!(!cpu.status.negative);
+        assert!(cpu.status.carry());
+        assert!(!cpu.status.negative());
         assert_eq!(cpu.bus.read(0x0001), 0x43);
     }
 
@@ -1505,8 +1437,8 @@ mod test {
         cpu.bus.write(0x0107, 0x20);
         cpu.bus.write(0x0108, 0x13);
         cpu._run();
-        assert!(cpu.status.carry);
-        assert!(cpu.status.negative);
+        assert!(cpu.status.carry());
+        assert!(cpu.status.negative());
         assert_eq!(cpu.stack_pointer, 0x8);
         assert_eq!(cpu.program_counter, 0x1321);
     }
@@ -1530,13 +1462,13 @@ mod test {
         let mut cpu = Cpu::new(bus);
         cpu._setup(vec![0xe9, 0x10]);
         cpu.register_a = 0x31;
-        cpu.status.carry = true;
+        cpu.status.set_carry(true);
         cpu._run();
         assert_eq!(cpu.register_a, 0x21);
-        assert!(cpu.status.carry); // no overflow so carry should stay
-        assert!(!cpu.status.negative);
-        assert!(!cpu.status.overflow);
-        assert!(!cpu.status.zero);
+        assert!(cpu.status.carry()); // no overflow so carry should stay
+        assert!(!cpu.status.negative());
+        assert!(!cpu.status.overflow());
+        assert!(!cpu.status.zero());
     }
 
     #[test]
@@ -1547,10 +1479,10 @@ mod test {
         cpu.register_a = 0x31;
         cpu._run();
         assert_eq!(cpu.register_a, 0x00);
-        assert!(cpu.status.carry);
-        assert!(!cpu.status.negative);
-        assert!(!cpu.status.overflow);
-        assert!(cpu.status.zero);
+        assert!(cpu.status.carry());
+        assert!(!cpu.status.negative());
+        assert!(!cpu.status.overflow());
+        assert!(cpu.status.zero());
     }
 
     #[test]
@@ -1559,13 +1491,13 @@ mod test {
         let mut cpu = Cpu::new(bus);
         cpu._setup(vec![0xe9, 0x40]);
         cpu.register_a = 0x30;
-        cpu.status.carry = true;
+        cpu.status.set_carry(true);
         cpu._run();
         assert_eq!(cpu.register_a, 0xf0);
-        assert!(!cpu.status.carry); // carry should be consumed
-        assert!(cpu.status.negative);
-        assert!(!cpu.status.overflow);
-        assert!(!cpu.status.zero);
+        assert!(!cpu.status.carry()); // carry should be consumed
+        assert!(cpu.status.negative());
+        assert!(!cpu.status.overflow());
+        assert!(!cpu.status.zero());
     }
 
     #[test]
@@ -1574,13 +1506,13 @@ mod test {
         let mut cpu = Cpu::new(bus);
         cpu._setup(vec![0xe9, 0x10]);
         cpu.register_a = 0x88; // -120
-        cpu.status.carry = true;
+        cpu.status.set_carry(true);
         cpu._run();
         assert_eq!(cpu.register_a, 0x78); // -120-16 turns into +120
-        assert!(cpu.status.carry); // does not consume carry
-        assert!(!cpu.status.negative);
-        assert!(cpu.status.overflow);
-        assert!(!cpu.status.zero);
+        assert!(cpu.status.carry()); // does not consume carry
+        assert!(!cpu.status.negative());
+        assert!(cpu.status.overflow());
+        assert!(!cpu.status.zero());
     }
 
     #[test]
@@ -1589,7 +1521,7 @@ mod test {
         let mut cpu = Cpu::new(bus);
         cpu._setup(vec![0x38]);
         cpu._run();
-        assert!(cpu.status.carry);
+        assert!(cpu.status.carry());
     }
 
     #[test]
@@ -1597,9 +1529,9 @@ mod test {
         let bus = dummy_bus();
         let mut cpu = Cpu::new(bus);
         cpu._setup(vec![0xf8]);
-        cpu.status.decimal = true;
+        cpu.status.set_decimal(true);
         cpu._run();
-        assert!(cpu.status.decimal);
+        assert!(cpu.status.decimal());
     }
 
     #[test]
@@ -1608,7 +1540,7 @@ mod test {
         let mut cpu = Cpu::new(bus);
         cpu._setup(vec![0x78]);
         cpu._run();
-        assert!(cpu.status.irq_disable);
+        assert!(cpu.status.irq_disable());
     }
 
     #[test]
@@ -1650,8 +1582,8 @@ mod test {
         cpu.register_y = 0x78;
         cpu._run();
         assert_eq!(cpu.register_y, 0x00);
-        assert!(!cpu.status.negative);
-        assert!(cpu.status.zero);
+        assert!(!cpu.status.negative());
+        assert!(cpu.status.zero());
     }
 
     #[test]
@@ -1662,8 +1594,8 @@ mod test {
         cpu.stack_pointer = 0xa5;
         cpu._run();
         assert_eq!(cpu.register_x, 0xa5);
-        assert!(cpu.status.negative);
-        assert!(!cpu.status.zero);
+        assert!(cpu.status.negative());
+        assert!(!cpu.status.zero());
     }
 
     #[test]
@@ -1674,8 +1606,8 @@ mod test {
         cpu.register_x = 0xa5;
         cpu._run();
         assert_eq!(cpu.register_a, 0xa5);
-        assert!(cpu.status.negative);
-        assert!(!cpu.status.zero);
+        assert!(cpu.status.negative());
+        assert!(!cpu.status.zero());
     }
 
     #[test]
@@ -1684,12 +1616,12 @@ mod test {
         let mut cpu = Cpu::new(bus);
         cpu._setup(vec![0x9a]);
         cpu.register_x = 0x55;
-        cpu.status.zero = true;
-        cpu.status.negative = true;
+        cpu.status.set_zero(true);
+        cpu.status.set_negative(true);
         cpu._run();
         assert_eq!(cpu.stack_pointer, 0x55);
-        assert!(cpu.status.negative); // does not affect flags
-        assert!(cpu.status.zero);
+        assert!(cpu.status.negative()); // does not affect flags
+        assert!(cpu.status.zero());
     }
 
     #[test]
@@ -1700,7 +1632,7 @@ mod test {
         cpu.register_y = 0xa5;
         cpu._run();
         assert_eq!(cpu.register_a, 0xa5);
-        assert!(cpu.status.negative);
-        assert!(!cpu.status.zero);
+        assert!(cpu.status.negative());
+        assert!(!cpu.status.zero());
     }
 }
