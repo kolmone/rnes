@@ -217,30 +217,29 @@ fn run_snake() {
 }
 
 fn trace(cpu: &mut Cpu) {
-    let status: u8 = cpu.status.into();
-    println!(
-        "{:04X}  {:02X}  {:3} {:02X} {:02X}  A:{:02X} X:{:02X} Y:{:02X} P:{:02X} SP:{:02X}",
-        cpu.program_counter,
-        cpu.bus.read(cpu.program_counter),
-        cpu.mnemonic,
-        cpu.bus.read(cpu.program_counter + 1),
-        cpu.bus.read(cpu.program_counter + 2),
-        cpu.register_a,
-        cpu.register_x,
-        cpu.register_y,
-        status,
-        cpu.stack_pointer
-    );
     // println!(
-    //     "{:04X}  {:02X}  A:{:02X} X:{:02X} Y:{:02X} P:{:02X} SP:{:02X}",
+    //     "{:04X}  {:02X}  {:3} {:02X} {:02X}  A:{:02X} X:{:02X} Y:{:02X} P:{:02X} SP:{:02X}",
     //     cpu.program_counter,
     //     cpu.bus.read(cpu.program_counter),
+    //     cpu.mnemonic,
+    //     cpu.bus.read(cpu.program_counter + 1),
+    //     cpu.bus.read(cpu.program_counter + 2),
     //     cpu.register_a,
     //     cpu.register_x,
     //     cpu.register_y,
-    //     status,
+    //     u8::from(cpu.status),
     //     cpu.stack_pointer
     // );
+    println!(
+        "{:04X}  {:02X}  A:{:02X} X:{:02X} Y:{:02X} P:{:02X} SP:{:02X}",
+        cpu.program_counter,
+        cpu.bus.read(cpu.program_counter),
+        cpu.register_a,
+        cpu.register_x,
+        cpu.register_y,
+        u8::from(cpu.status),
+        cpu.stack_pointer
+    );
 }
 
 fn run_nestest() {

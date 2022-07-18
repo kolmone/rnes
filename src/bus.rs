@@ -108,8 +108,10 @@ impl<'call> Bus<'call> {
 
     pub fn tick(&mut self, cycles: u8) {
         self.cycles += cycles as usize;
-        if self.ppu.tick(cycles * 3) {
-            (self.game_callback)(&self.ppu, &mut self.controller);
+        for _ in 0..3*cycles {
+            if self.ppu.tick() {
+                (self.game_callback)(&self.ppu, &mut self.controller);
+            }
         }
     }
 

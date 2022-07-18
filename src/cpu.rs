@@ -1,9 +1,8 @@
 mod instr;
 
 use crate::bus::Bus;
+use bitbash::bitfield;
 use instr::AddressingMode;
-
-use instr::Instruction;
 
 pub struct Cpu<'a> {
     pub register_a: u8,
@@ -15,6 +14,19 @@ pub struct Cpu<'a> {
     pub bus: Bus<'a>,
     pub mnemonic: String,
     pub cycles: u8,
+}
+
+bitfield! {
+    struct StatusReg(u8);
+
+    field carry:       bool = [0];
+    field zero:        bool = [1];
+    field irq_disable: bool = [2];
+    field decimal:     bool = [3];
+    field break_cmd:   bool = [4];
+    field unused:      bool = [5];
+    field overflow:    bool = [6];
+    field negative:    bool = [7];
 }
 
 #[derive(Debug, Copy, Clone)]
@@ -50,7 +62,6 @@ impl From<u8> for StatusFlags {
             irq_disable: status & IRQ_DISABLE_FLAG != 0,
             decimal: status & DECIMAL_FLAG != 0,
             break_cmd: status & BREAK_FLAG != 0,
-            // unused: status & UNUSED_FLAG != 0,
             unused: true,
             overflow: status & OVERFLOW_FLAG != 0,
             negative: status & NEGATIVE_FLAG != 0,
@@ -63,7 +74,6 @@ const ZERO_FLAG: u8 = 0x1 << 1;
 const IRQ_DISABLE_FLAG: u8 = 0x1 << 2;
 const DECIMAL_FLAG: u8 = 0x1 << 3;
 const BREAK_FLAG: u8 = 0x1 << 4;
-const UNUSED_FLAG: u8 = 0x1 << 5;
 const OVERFLOW_FLAG: u8 = 0x1 << 6;
 const NEGATIVE_FLAG: u8 = 0x1 << 7;
 

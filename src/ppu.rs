@@ -71,12 +71,11 @@ impl Ppu {
         }
     }
 
-    /// Progress by N clock cycles
-    /// Returns line number to be rendered
-    pub fn tick(&mut self, cycles: u8) -> bool {
-        self.cycles += cycles as usize;
-        if self.cycles >= Ppu::CYCLES_PER_LINE {
-            self.cycles -= Ppu::CYCLES_PER_LINE;
+    /// Progress by one PPU clock cycle
+    pub fn tick(&mut self) -> bool {
+        self.cycles += 1;
+        if self.cycles == Ppu::CYCLES_PER_LINE {
+            self.cycles = 0;
 
             match self.scanline {
                 0..=Ppu::LAST_RENDER_LINE => {
@@ -245,15 +244,6 @@ impl Ppu {
             self.palette[idx + 1],
             self.palette[idx + 2],
         ]
-    }
-
-    fn sprite_palette(&self, palette: u8) -> (u8, u8, u8) {
-        let idx = (17 + 4 * palette) as usize;
-        (
-            self.palette[idx],
-            self.palette[idx + 1],
-            self.palette[idx + 3],
-        )
     }
 
     fn sprite_color(&self, palette: u8, idx: u8) -> u8 {
@@ -535,10 +525,10 @@ mod test {
     fn test_ppu_data_read_palette() {
         let mut ppu = Ppu::new(vec![0; 0], Mirroring::Vertical);
 
-        ppu.palette[0x14] = 0x67;
+        ppu.palette[0x13] = 0x67;
 
         ppu.write(0x2006, 0x3f);
-        ppu.write(0x2006, 0x13);
+        ppu.write(0x2006, 0x12);
 
         assert_eq!(ppu.read(0x2007), 0x0);
         assert_eq!(ppu.read(0x2007), 0x67);
