@@ -52,13 +52,13 @@ impl Renderer {
             _ => panic!("Unsupported"),
         };
 
-        if ppu.vertical_scroll == 0 && ppu.horizontal_scroll == 0 {
+        if ppu.scroll.vert_scroll == 0 && ppu.scroll.hori_scroll == 0 {
             for x in 0..Frame::WIDTH {
                 let pixel = frames.0.bg_pixel(x, y);
                 self.final_frame.set_bg_pixel(x, y, pixel);
             }
-        } else if ppu.vertical_scroll > 0 {
-            let scroll = ppu.vertical_scroll as usize;
+        } else if ppu.scroll.vert_scroll > 0 {
+            let scroll = ppu.scroll.vert_scroll as usize;
 
             if y < Frame::HEIGHT - scroll {
                 for x in 0..Frame::WIDTH {
@@ -71,8 +71,8 @@ impl Renderer {
                     self.final_frame.set_bg_pixel(x, y, pixel);
                 }
             }
-        } else if ppu.horizontal_scroll > 0 {
-            let scroll = ppu.horizontal_scroll as usize;
+        } else if ppu.scroll.hori_scroll > 0 {
+            let scroll = ppu.scroll.hori_scroll as usize;
 
             for x in 0..Frame::WIDTH {
                 let pixel = if x < Frame::WIDTH - scroll {
@@ -129,15 +129,11 @@ impl Renderer {
     fn render_sprites(&mut self, ppu: &Ppu) {
         let y = ppu.scanline - 1;
         let line = &ppu.sprite_line;
-        for x in 0..256 {
+        for (x, pixel) in line.iter().enumerate() {
             self.sprite_frame.set_sprite_pixel(
                 x,
                 y as usize,
-                frame::SpritePixel(
-                    self.palette.palette[line[x].0 as usize],
-                    line[x].1,
-                    line[x].2,
-                ),
+                frame::SpritePixel(self.palette.palette[pixel.0 as usize], pixel.1, pixel.2),
             );
         }
     }
@@ -148,7 +144,7 @@ impl Renderer {
             .update(final_rect, &self.final_frame.data, 256 * 3)
             .unwrap();
 
-        canvas.copy(&texture, None, None).unwrap();
+        canvas.copy(texture, None, None).unwrap();
         canvas.present();
     }
 
@@ -171,7 +167,7 @@ impl Renderer {
             .update(final_rect, &self.final_frame.data, 256 * 3)
             .unwrap();
 
-        canvas.copy(&texture, None, None).unwrap();
+        canvas.copy(texture, None, None).unwrap();
         canvas.present();
     }
 }

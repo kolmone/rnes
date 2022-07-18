@@ -1,8 +1,10 @@
 mod regs;
 
-use core::panic;
 use crate::bus::Mirroring;
+use core::panic;
 use regs::{AddrReg, ControllerReg, MaskReg, StatusReg};
+
+use self::regs::ScrollReg;
 
 pub struct Ppu {
     chr: Vec<u8>,
@@ -15,11 +17,9 @@ pub struct Ppu {
     addr: AddrReg,
     mask: MaskReg,
     status: StatusReg,
+    pub scroll: ScrollReg,
     pub oam_addr: u8,
-    data_buf: u8, // Buffered RAM/ROM data
-    pub vertical_scroll: u8,
-    pub horizontal_scroll: u8,
-    on_vert_scroll: bool,
+    read_buf: u8, // Buffered RAM/ROM data
 
     pub scanline: u16,
     cycles: usize,
@@ -58,10 +58,8 @@ impl Ppu {
             mask: MaskReg::new(),
             status: StatusReg::new(),
             oam_addr: 0,
-            data_buf: 0,
-            vertical_scroll: 0,
-            horizontal_scroll: 0,
-            on_vert_scroll: false,
+            read_buf: 0,
+            scroll: ScrollReg::new(),
             scanline: 0,
             cycles: 0,
             nmi_triggered: false,
@@ -97,7 +95,7 @@ impl Ppu {
                 _ => self.scanline += 1,
             }
         }
-        return false;
+        false
     }
 
     pub fn nmi_triggered(&mut self) -> bool {
@@ -106,7 +104,7 @@ impl Ppu {
             self.nmi_triggered = false;
             return true;
         }
-        return false;
+        false
     }
 
     pub fn read(&mut self, addr: u16) -> u8 {
@@ -143,7 +141,7 @@ impl Ppu {
             REG_MASK => self.mask.0 = data,
             REG_OAM_ADDR => self.oam_addr = data,
             REG_OAM_DATA => self.oam_write(data),
-            REG_SCROLL => self.scroll_write(data),
+            REG_SCROLL => self.scroll.write(data),
             REG_ADDR => self.addr.write(data),
             REG_DATA => self.data_write(data),
             _ => panic!("Write to read-only PPU register at 0x{:x}", addr),
@@ -154,18 +152,18 @@ impl Ppu {
         let addr = self.addr.get();
         self.addr.increment(self.controller.get_increment());
 
-        let old_buf = self.data_buf;
+        let old_buf = self.read_buf;
         match addr {
             0..=0x1FFF => {
-                self.data_buf = self.chr[addr as usize];
+                self.read_buf = self.chr[addr as usize];
                 old_buf
             }
             0x2000..=0x3EFF | 0x3F20..=0x3FFF => {
-                self.data_buf = self.vram[self.mirrored_vram_addr(addr)];
+                self.read_buf = self.vram[self.mirrored_vram_addr(addr)];
                 old_buf
             }
             0x3F00..=0x3F1F => {
-                self.data_buf = self.vram[self.mirrored_vram_addr(addr)];
+                self.read_buf = self.vram[self.mirrored_vram_addr(addr)];
                 self.palette[self.palette_idx(addr)]
             }
             _ => panic!("Data read from unsupported PPU address at 0x{:x}", addr),
@@ -193,20 +191,6 @@ impl Ppu {
     fn oam_write(&mut self, data: u8) {
         self.oam[self.oam_addr as usize] = data;
         self.oam_addr = self.oam_addr.wrapping_add(1);
-    }
-
-    fn scroll_write(&mut self, data: u8) {
-        if self.on_vert_scroll {
-            self.vertical_scroll = data;
-        } else {
-            self.horizontal_scroll = data;
-        }
-        // println!(
-        //     "Scroll written! Vertical scroll now {}, horizontal scroll {}",
-        //     self.vertical_scroll,
-        //     self.horizontal_scroll
-        // );
-        self.on_vert_scroll = !self.on_vert_scroll;
     }
 
     /// Translates given VRAM address to actual VRAM location
@@ -288,8 +272,8 @@ impl Ppu {
         let mut upper_bits = self.chr[tile_ptr + 8];
 
         let mut values = [0; 8];
-        for i in 0..8 {
-            values[i] = (lower_bits & 0x1) + ((upper_bits & 0x1) << 1);
+        for value in &mut values {
+            *value = (lower_bits & 0x1) + ((upper_bits & 0x1) << 1);
             lower_bits >>= 1;
             upper_bits >>= 1;
         }
@@ -302,7 +286,7 @@ impl Ppu {
         let attribute = self.vram[vram_base + attribute_idx];
 
         match ((tile_num / 2) % 2, (scanline / 16) % 2) {
-            (0, 0) => (attribute >> 0) & 0x03, // top left
+            (0, 0) => attribute & 0x03,        // top left
             (1, 0) => (attribute >> 2) & 0x03, // top right
             (0, 1) => (attribute >> 4) & 0x03, // bottom left
             (1, 1) => (attribute >> 6) & 0x03, // bottom right
@@ -370,7 +354,7 @@ impl Ppu {
             7 - x_idx
         };
 
-        ((lower_bits >> idx) & 0x1) + (((upper_bits >> idx) & 0x1) << 1) & 0x3
+        (((lower_bits >> idx) & 0x1) + (((upper_bits >> idx) & 0x1) << 1)) & 0x3
     }
 
     fn sprites(&self) -> SpriteIterator {
@@ -591,14 +575,14 @@ mod test {
         ppu.write(0x2005, 0x21);
         ppu.write(0x2005, 0x56);
 
-        assert_eq!(ppu.horizontal_scroll, 0x21);
-        assert_eq!(ppu.vertical_scroll, 0x56);
+        assert_eq!(ppu.scroll.hori_scroll, 0x21);
+        assert_eq!(ppu.scroll.vert_scroll, 0x56);
 
         ppu.write(0x2005, 0x17);
         ppu.write(0x2005, 0x34);
 
-        assert_eq!(ppu.horizontal_scroll, 0x17);
-        assert_eq!(ppu.vertical_scroll, 0x34);
+        assert_eq!(ppu.scroll.hori_scroll, 0x17);
+        assert_eq!(ppu.scroll.vert_scroll, 0x34);
     }
 
     #[test]

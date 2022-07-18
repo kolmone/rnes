@@ -1,4 +1,5 @@
 #![warn(trivial_numeric_casts)]
+#![warn(clippy::all)]
 
 mod bus;
 mod controller;
@@ -36,7 +37,7 @@ fn build_keymap() -> HashMap<Keycode, Button> {
     keymap.insert(Keycode::Return, Button::Start);
     keymap.insert(Keycode::X, Button::A);
     keymap.insert(Keycode::Z, Button::B);
-    return keymap;
+    keymap
 }
 
 fn run_rom(file: &str, do_trace: bool, render_debug: bool) {
@@ -76,7 +77,7 @@ fn run_rom(file: &str, do_trace: bool, render_debug: bool) {
             while SystemTime::now() < expected_timestamp {}
             expected_timestamp = SystemTime::now() + Duration::from_nanos(63613);
 
-            renderer.render_line(&ppu, &mut canvas, &mut texture, render_debug);
+            renderer.render_line(ppu, &mut canvas, &mut texture, render_debug);
 
             for event in event_pump.poll_iter() {
                 match event {
@@ -275,9 +276,9 @@ fn main() {
     let trace = args.contains(&"--trace".to_owned());
     let render_debug = args.contains(&"--debug".to_owned());
 
-    if args[1] == "snake".to_owned() {
+    if args[1] == *"snake" {
         run_snake();
-    } else if args[1] == "nestest".to_owned() {
+    } else if args[1] == *"nestest" {
         run_nestest();
     } else {
         run_rom(&args[1], trace, render_debug);

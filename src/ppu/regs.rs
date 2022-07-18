@@ -48,6 +48,36 @@ impl AddrReg {
     }
 }
 
+pub struct ScrollReg {
+    pub hori_scroll: u8,
+    pub vert_scroll: u8,
+    pub on_vert_scroll: bool,
+}
+
+impl ScrollReg {
+    pub fn new() -> Self {
+        ScrollReg {
+            hori_scroll: 0,
+            vert_scroll: 0,
+            on_vert_scroll: false,
+        }
+    }
+
+    pub fn write(&mut self, data: u8) {
+        if self.on_vert_scroll {
+            self.vert_scroll = data;
+        } else {
+            self.hori_scroll = data;
+        }
+        self.on_vert_scroll = !self.on_vert_scroll;
+        // println!(
+        //     "Scroll written! Vertical scroll now {}, horizontal scroll {}",
+        //     self.vert_scroll,
+        //     self.hori_scroll
+        // );
+    }
+}
+
 bitfield! {
     pub struct ControllerReg(pub u8);
     pub new();

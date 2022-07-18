@@ -44,7 +44,7 @@ const PRG_ROM_BANK_SIZE: usize = 0x4000;
 const CHR_ROM_BANK_SIZE: usize = 0x2000;
 impl Rom {
     pub fn new(raw: Vec<u8>) -> Result<Rom, String> {
-        if &raw[0..4] != INES_TAG {
+        if raw[0..4] != INES_TAG {
             return Err("File is not in iNES file format".to_string());
         }
 
@@ -74,7 +74,7 @@ impl Rom {
         Ok(Rom {
             prg: raw[prg_rom_start..(prg_rom_start + prg_rom_size)].to_vec(),
             chr: raw[chr_rom_start..(chr_rom_start + chr_rom_size)].to_vec(),
-            mapper: mapper,
+            mapper,
             mirroring: screen_mirroring,
         })
     }
@@ -108,7 +108,7 @@ impl<'call> Bus<'call> {
 
     pub fn tick(&mut self, cycles: u8) {
         self.cycles += cycles as usize;
-        for _ in 0..3*cycles {
+        for _ in 0..3 * cycles {
             if self.ppu.tick() {
                 (self.game_callback)(&self.ppu, &mut self.controller);
             }
