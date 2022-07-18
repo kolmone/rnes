@@ -42,7 +42,7 @@ impl Renderer {
 
         let y = ppu.scanline as usize - 1;
 
-        let frames = match (ppu.mirroring, ppu.controller.base_nametable()) {
+        let frames = match (ppu.mirroring, ppu.controller.nametable()) {
             (Mirroring::Horizontal, 0 | 1) | (Mirroring::Vertical, 0 | 2) => {
                 (&self.frame_a, &self.frame_b)
             }

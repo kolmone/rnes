@@ -44,7 +44,7 @@ impl Controller {
         if self.strobe {
             return self.buttons[0] as u8;
         } else if self.read_ptr < 8 {
-            let val = self.buttons[self.read_ptr as usize] as u8;
+            let val = self.buttons[self.read_ptr] as u8;
             self.read_ptr += 1;
             return val;
         } else {

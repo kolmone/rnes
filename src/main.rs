@@ -1,3 +1,5 @@
+#![warn(trivial_numeric_casts)]
+
 mod bus;
 mod controller;
 mod cpu;
@@ -42,7 +44,7 @@ fn run_rom(file: &str, do_trace: bool, render_debug: bool) {
     let window = sdl
         .video()
         .unwrap()
-        .window("N3S", 256 * 4 as u32, 240 * 4 as u32)
+        .window("N3S", 256 * 4, 240 * 4)
         .position_centered()
         .build()
         .unwrap();
@@ -192,7 +194,7 @@ fn run_snake() {
         .create_texture_target(PixelFormatEnum::RGB24, 32, 32)
         .unwrap();
 
-    let mut screen_state = [0 as u8; 32 * 3 * 32];
+    let mut screen_state = [0; 32 * 3 * 32];
     let mut rng = rand::thread_rng();
 
     // let mut renderer = Renderer::new();

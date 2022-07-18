@@ -17,7 +17,7 @@ pub struct Cpu<'a> {
 }
 
 bitfield! {
-    #[derive(Copy, Clone, PartialEq, Eq)]
+    #[derive(Copy, Clone)]
     pub struct StatusReg(pub u8);
     pub new();
 

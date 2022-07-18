@@ -1,8 +1,6 @@
 mod regs;
 
 use core::panic;
-use std::collections::binary_heap::Iter;
-
 use crate::bus::Mirroring;
 use regs::{AddrReg, ControllerReg, MaskReg, StatusReg};
 
@@ -44,7 +42,7 @@ const PPU_BUS_MIRROR_MASK: u16 = 0x2007;
 impl Ppu {
     const CYCLES_PER_LINE: usize = 341;
 
-    const LINES_PER_FRAME: u16 = 262;
+    const LAST_LINE: u16 = 261;
     const LAST_RENDER_LINE: u16 = 239;
     const VBLANK_START_LINE: u16 = 241;
 
@@ -85,15 +83,15 @@ impl Ppu {
                 }
                 Ppu::VBLANK_START_LINE => {
                     self.scanline += 1;
-                    self.status.vblank = true;
-                    if self.controller.generate_nmi {
+                    self.status.set_vblank(true);
+                    if self.controller.generate_nmi() {
                         self.nmi_triggered = true;
                     }
                 }
-                261 => {
-                    self.status.sprite0_hit = false;
+                Ppu::LAST_LINE => {
+                    self.status.set_sprite0_hit(false);
                     self.scanline = 0;
-                    self.status.vblank = false;
+                    self.status.set_vblank(false);
                 }
                 // 240, 242 - 260
                 _ => self.scanline += 1,
@@ -115,8 +113,9 @@ impl Ppu {
         let addr = addr & PPU_BUS_MIRROR_MASK;
         match addr {
             REG_STATUS => {
-                let old_status = self.status.into();
-                self.status.vblank = false;
+                self.addr.reset_latch();
+                let old_status = self.status.0;
+                self.status.set_vblank(false);
                 old_status
             }
             REG_OAM_DATA => self.oam_read(),
@@ -129,19 +128,19 @@ impl Ppu {
         let addr = addr & PPU_BUS_MIRROR_MASK;
         match addr {
             REG_CONTROLLER => {
-                let old_nmi_val = self.controller.generate_nmi;
-                self.controller = data.into();
-                if !old_nmi_val && self.controller.generate_nmi && self.status.vblank {
+                let old_nmi_val = self.controller.generate_nmi();
+                self.controller.0 = data;
+                if !old_nmi_val && self.controller.generate_nmi() && self.status.vblank() {
                     self.nmi_triggered = true;
                 }
                 println!(
                     "CTRL 0b{:08b} written at scanline {}, base nametable is {}",
                     data,
                     self.scanline,
-                    self.controller.base_nametable()
+                    self.controller.nametable()
                 );
             }
-            REG_MASK => self.mask = data.into(),
+            REG_MASK => self.mask.0 = data,
             REG_OAM_ADDR => self.oam_addr = data,
             REG_OAM_DATA => self.oam_write(data),
             REG_SCROLL => self.scroll_write(data),
@@ -283,7 +282,7 @@ impl Ppu {
     }
 
     fn bg_tile_row(&self, tile_idx: u8, row: u16) -> [u8; 8] {
-        let base = self.controller.background_half as usize * 0x1000;
+        let base = self.controller.background_half() * 0x1000;
         let tile_ptr = base + (tile_idx as usize) * 16 + row as usize;
         let mut lower_bits = self.chr[tile_ptr];
         let mut upper_bits = self.chr[tile_ptr + 8];
@@ -342,7 +341,7 @@ impl Ppu {
                     if color != 0 {
                         if sprite.idx == 0 {
                             // println!("Sprite zero hit at {}, {}", x, y);
-                            self.status.sprite0_hit = true;
+                            self.status.set_sprite0_hit(true);
                         }
                         let color = self.sprite_color(sprite.attributes & 0x3, color);
                         let priority = sprite.attributes & 0x20 != 0;
@@ -360,8 +359,8 @@ impl Ppu {
         } else {
             y_idx
         };
-        let base = self.controller.sprite_half as usize * 0x1000;
-        let tile_ptr = base + (sprite.tile_idx as usize) * 16 + row as usize;
+        let base = self.controller.sprite_half() * 0x1000;
+        let tile_ptr = base + (sprite.tile_idx as usize) * 16 + row;
         let lower_bits = self.chr[tile_ptr];
         let upper_bits = self.chr[tile_ptr + 8];
 
