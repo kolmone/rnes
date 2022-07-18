@@ -1,7 +1,7 @@
 mod frame;
 mod palette;
 
-use crate::{bus::Mirroring, Ppu};
+use crate::Ppu;
 use frame::Frame;
 use palette::Palette;
 use sdl2::{
@@ -11,163 +11,64 @@ use sdl2::{
 };
 
 pub struct Renderer {
-    frame_a: Frame,
-    frame_b: Frame,
-    sprite_frame: Frame,
-    final_frame: Frame,
     palette: Palette,
 }
 
 impl Renderer {
     pub fn new() -> Self {
         Self {
-            frame_a: Frame::new(),
-            frame_b: Frame::new(),
-            final_frame: Frame::new(),
-            sprite_frame: Frame::new(),
             palette: Palette::new("cxa.pal"),
         }
     }
 
-    pub fn render_line(
+    pub fn render_screen(
         &mut self,
         ppu: &Ppu,
         canvas: &mut Canvas<Window>,
         texture: &mut Texture,
         debug: bool,
     ) {
-        self.render_background_line(ppu, 0);
-        self.render_background_line(ppu, 1);
-        self.render_sprites(ppu);
-
-        let y = ppu.scanline as usize - 1;
-
-        let frames = match (ppu.mirroring, ppu.controller.nametable()) {
-            (Mirroring::Horizontal, 0 | 1) | (Mirroring::Vertical, 0 | 2) => {
-                (&self.frame_a, &self.frame_b)
-            }
-            (Mirroring::Horizontal, 2 | 3) | (Mirroring::Vertical, 1 | 3) => {
-                (&self.frame_b, &self.frame_a)
-            }
-            _ => panic!("Unsupported"),
-        };
-
-        if ppu.scroll.vert_scroll == 0 && ppu.scroll.hori_scroll == 0 {
-            for x in 0..Frame::WIDTH {
-                let pixel = frames.0.bg_pixel(x, y);
-                self.final_frame.set_bg_pixel(x, y, pixel);
-            }
-        } else if ppu.scroll.vert_scroll > 0 {
-            let scroll = ppu.scroll.vert_scroll as usize;
-
-            if y < Frame::HEIGHT - scroll {
-                for x in 0..Frame::WIDTH {
-                    let pixel = frames.0.bg_pixel(x, y + scroll);
-                    self.final_frame.set_bg_pixel(x, y, pixel);
-                }
-            } else {
-                for x in 0..Frame::WIDTH {
-                    let pixel = frames.1.bg_pixel(x, y - (Frame::HEIGHT - scroll));
-                    self.final_frame.set_bg_pixel(x, y, pixel);
-                }
-            }
-        } else if ppu.scroll.hori_scroll > 0 {
-            let scroll = ppu.scroll.hori_scroll as usize;
-
-            for x in 0..Frame::WIDTH {
-                let pixel = if x < Frame::WIDTH - scroll {
-                    frames.0.bg_pixel(x + scroll, y)
-                } else {
-                    frames.1.bg_pixel(x - (Frame::WIDTH - scroll), y)
-                };
-                self.final_frame.set_bg_pixel(x, y, pixel);
-            }
-        }
-
-        for x in 0..Frame::WIDTH {
-            if self.sprite_frame.opaque(x, y)
-                && (!self.sprite_frame.priority(x, y) || !self.final_frame.opaque(x, y))
-            {
-                let pixel = self.sprite_frame.sprite_pixel(x, y);
-                self.final_frame.set_sprite_pixel(x, y, pixel);
-            }
-        }
-
-        if y == 239 {
-            if debug {
-                self.draw_debug_screens(canvas, texture);
-            } else {
-                self.draw_screen(canvas, texture);
-            }
-        }
-    }
-
-    fn render_background_line(&mut self, ppu: &Ppu, screen: u8) {
-        let y = ppu.scanline - 1;
-
-        let frame = if screen == 0 {
-            &mut self.frame_a
+        let final_rect = if debug {
+            Rect::new(256, 240, 256, 240)
         } else {
-            &mut self.frame_b
+            Rect::new(0, 0, 256, 240)
         };
 
-        let mut x = 0;
-
-        // Draw each tile
-        for tile_on_scanline in 0..32 {
-            let (tile_data, tile_palette) = ppu.bg_tile_data(screen, y, tile_on_scanline);
-
-            for i in 0..8 {
-                let rgb = self.palette.palette[tile_palette[tile_data[i] as usize] as usize];
-                let pixel = frame::BGPixel(rgb, tile_data[i] != 0);
-                frame.set_bg_pixel(x + 7 - i, y as usize, pixel);
-            }
-            x += 8;
-        }
-    }
-
-    fn render_sprites(&mut self, ppu: &Ppu) {
-        let y = ppu.scanline - 1;
-        let line = &ppu.sprite_line;
-        for (x, pixel) in line.iter().enumerate() {
-            self.sprite_frame.set_sprite_pixel(
-                x,
-                y as usize,
-                frame::SpritePixel(self.palette.palette[pixel.0 as usize], pixel.1, pixel.2),
+        let mut frame = Frame::new();
+        for (idx, pixel) in ppu.frame.iter().enumerate() {
+            frame.set_pixel(
+                idx % 256,
+                idx / 256,
+                self.palette.palette[(*pixel) as usize],
             );
         }
-    }
 
-    fn draw_screen(&mut self, canvas: &mut Canvas<Window>, texture: &mut Texture) {
-        let final_rect = Rect::new(0, 0, 256, 240);
-        texture
-            .update(final_rect, &self.final_frame.data, 256 * 3)
-            .unwrap();
+        texture.update(final_rect, &frame.data, 256 * 3).unwrap();
 
         canvas.copy(texture, None, None).unwrap();
         canvas.present();
     }
 
-    fn draw_debug_screens(&self, canvas: &mut Canvas<Window>, texture: &mut Texture) {
-        let screen_rects = (Rect::new(0, 0, 256, 240), Rect::new(256, 0, 256, 240));
-        texture
-            .update(screen_rects.0, &self.frame_a.data, 256 * 3)
-            .unwrap();
-        texture
-            .update(screen_rects.1, &self.frame_b.data, 256 * 3)
-            .unwrap();
+    // fn draw_debug_screens(&self, canvas: &mut Canvas<Window>, texture: &mut Texture) {
+    //     let screen_rects = (Rect::new(0, 0, 256, 240), Rect::new(256, 0, 256, 240));
+    //     texture
+    //         .update(screen_rects.0, &self.frame_a.data, 256 * 3)
+    //         .unwrap();
+    //     texture
+    //         .update(screen_rects.1, &self.frame_b.data, 256 * 3)
+    //         .unwrap();
 
-        let sprite_rect = Rect::new(0, 240, 256, 240);
-        texture
-            .update(sprite_rect, &self.sprite_frame.data, 256 * 3)
-            .unwrap();
+    //     let sprite_rect = Rect::new(0, 240, 256, 240);
+    //     texture
+    //         .update(sprite_rect, &self.sprite_frame.data, 256 * 3)
+    //         .unwrap();
 
-        let final_rect = Rect::new(256, 240, 256, 240);
-        texture
-            .update(final_rect, &self.final_frame.data, 256 * 3)
-            .unwrap();
+    //     let final_rect = Rect::new(256, 240, 256, 240);
+    //     texture
+    //         .update(final_rect, &self.final_frame.data, 256 * 3)
+    //         .unwrap();
 
-        canvas.copy(texture, None, None).unwrap();
-        canvas.present();
-    }
+    //     canvas.copy(texture, None, None).unwrap();
+    //     canvas.present();
+    // }
 }

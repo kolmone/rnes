@@ -1,5 +1,5 @@
 #![warn(trivial_numeric_casts)]
-#![warn(clippy::all)]
+#![allow(clippy::bad_bit_mask)]
 
 mod bus;
 mod controller;
@@ -75,9 +75,10 @@ fn run_rom(file: &str, do_trace: bool, render_debug: bool) {
         Rom::new(rom).unwrap(),
         |ppu: &Ppu, controller: &mut Controller| {
             while SystemTime::now() < expected_timestamp {}
-            expected_timestamp = SystemTime::now() + Duration::from_nanos(63613);
+            // expected_timestamp = SystemTime::now() + Duration::from_nanos(63613);
+            expected_timestamp = SystemTime::now() + Duration::from_micros(16667);
 
-            renderer.render_line(ppu, &mut canvas, &mut texture, render_debug);
+            renderer.render_screen(ppu, &mut canvas, &mut texture, render_debug);
 
             for event in event_pump.poll_iter() {
                 match event {

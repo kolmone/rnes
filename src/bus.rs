@@ -116,7 +116,7 @@ impl<'call> Bus<'call> {
     }
 
     pub fn get_nmi_state(&mut self) -> bool {
-        self.ppu.nmi_triggered()
+        self.ppu.nmi_up
     }
 
     pub fn read(&mut self, addr: u16) -> u8 {

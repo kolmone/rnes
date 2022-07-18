@@ -14,6 +14,7 @@ pub struct Cpu<'a> {
     pub bus: Bus<'a>,
     pub mnemonic: String,
     pub cycles: u8,
+    nmi_seen: bool,
 }
 
 bitfield! {
@@ -31,7 +32,7 @@ bitfield! {
     field negative:    bool = [7];
 }
 
-const SIGN_MASK:  u8 = 0x1 << 7;
+const SIGN_MASK: u8 = 0x1 << 7;
 const RESET_ADDR: u16 = 0xFFFC;
 const STACK_PAGE: u16 = 0x0100;
 
@@ -47,6 +48,7 @@ impl<'a> Cpu<'a> {
             bus,
             mnemonic: "".to_owned(),
             cycles: 0,
+            nmi_seen: false,
         }
     }
 
@@ -168,10 +170,13 @@ impl<'a> Cpu<'a> {
         self.register_a = orig_a.wrapping_add(operand).wrapping_add(carry);
 
         // Overflow if both inputs are different sign than result
-        self.status.set_overflow ((orig_a ^ self.register_a) & (operand ^ self.register_a) & SIGN_MASK != 0);
+        self.status.set_overflow(
+            (orig_a ^ self.register_a) & (operand ^ self.register_a) & SIGN_MASK != 0,
+        );
 
         // Carry if new value is smaller, or value from operand was 0xFF and carry was set
-        self.status.set_carry(self.register_a < orig_a || self.register_a == orig_a && carry > 0);
+        self.status
+            .set_carry(self.register_a < orig_a || self.register_a == orig_a && carry > 0);
 
         self.update_zero_neg(self.register_a);
     }
@@ -268,7 +273,8 @@ impl<'a> Cpu<'a> {
         let operand = self.bus.read(addr);
         self.status.set_carry(source >= operand);
         self.status.set_zero(source == operand);
-        self.status.set_negative(source.wrapping_sub(operand) & SIGN_MASK != 0);
+        self.status
+            .set_negative(source.wrapping_sub(operand) & SIGN_MASK != 0);
     }
 
     fn dec(&mut self, mode: &AddressingMode) {
@@ -454,11 +460,13 @@ impl<'a> Cpu<'a> {
 
         // Overflow if both inputs are different sign than result
         self.status.set_overflow(
-            (orig_a ^ self.register_a) & (operand_neg ^ self.register_a) & SIGN_MASK != 0);
+            (orig_a ^ self.register_a) & (operand_neg ^ self.register_a) & SIGN_MASK != 0,
+        );
 
         // Carry if new value is smaller, or current value is same as original and carry was set
         self.status.set_carry(
-            self.register_a < orig_a || self.register_a == orig_a && self.status.carry());
+            self.register_a < orig_a || self.register_a == orig_a && self.status.carry(),
+        );
 
         self.update_zero_neg(self.register_a);
     }
@@ -660,8 +668,11 @@ impl<'a> Cpu<'a> {
                 _ => self.program_counter += (instruction.bytes - 1) as u16,
             }
 
-            if self.bus.get_nmi_state() {
+            if self.bus.get_nmi_state() && !self.nmi_seen {
+                self.nmi_seen = true;
                 self.nmi();
+            } else {
+                self.nmi_seen = self.bus.get_nmi_state();
             }
         }
     }
