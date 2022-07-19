@@ -6,11 +6,23 @@ use regs::{AddrReg, ControllerReg, MaskReg, StatusReg};
 
 use self::regs::ScrollReg;
 
+#[derive(Clone, Copy)]
+struct Sprite {
+    sprite_idx: u8,
+    x_pos: u8,
+    y_pos: u8,
+    tile_idx: u8,
+    attributes: u8,
+    pattern: u16,
+}
+
 pub struct Ppu {
     chr: Vec<u8>,
     vram: [u8; 2048],
     palette: [u8; 32],
-    oam: [u8; 256],
+    oam: [u8; 4 * 64],
+    render_oam: [Sprite; 8],
+    prefetch_oam: [Sprite; 8],
     pub mirroring: Mirroring,
 
     ctrl: ControllerReg,
@@ -39,7 +51,9 @@ pub struct Ppu {
     sp_render_idx: usize,
     pattern_addr: u16,
     pattern: u16,
+    sprite_data: u8,
     attribute: u8,
+    cycle: usize,
 }
 
 const REG_CONTROLLER: u16 = 0x2000;
@@ -56,16 +70,26 @@ const PPU_BUS_MIRROR_MASK: u16 = 0x2007;
 impl Ppu {
     const CYCLES_PER_LINE: usize = 341;
 
-    const LAST_LINE: usize = 261;
-    const RENDER_LINES: usize = 240;
-    const VBLANK_START_LINE: usize = 241;
+    const LAST_LINE: isize = 261;
+    const RENDER_LINES: isize = 240;
+    const VBLANK_START_LINE: isize = 241;
 
     pub fn new(chr: Vec<u8>, mirroring: Mirroring) -> Self {
+        let empty_sprite = Sprite {
+            sprite_idx: 0,
+            attributes: 0,
+            pattern: 0,
+            tile_idx: 0,
+            x_pos: 0,
+            y_pos: 0,
+        };
         Self {
             chr,
             vram: [0; 2048],
             palette: [0; 32],
-            oam: [0; 256],
+            oam: [0; 4 * 64],
+            prefetch_oam: [empty_sprite; 8],
+            render_oam: [empty_sprite; 8],
             mirroring,
             ctrl: ControllerReg::new(),
             addr: AddrReg::new(),
@@ -88,14 +112,17 @@ impl Ppu {
             pattern_addr: 0,
             pattern: 0,
             attribute: 0,
+            sprite_data: 0,
+            cycle: 0,
         }
     }
 
     /// Progress by one PPU clock cycle
     pub fn tick(&mut self) -> bool {
+        self.cycle += 1;
         self.nmi_up = self.status.vblank() && self.ctrl.generate_nmi();
 
-        if (self.scanline as usize) < Ppu::RENDER_LINES {
+        if self.scanline < Ppu::RENDER_LINES {
             if self.mask.show_bg() | self.mask.show_sprites() {
                 self.render_tick();
             }
@@ -108,10 +135,10 @@ impl Ppu {
         if self.x >= Ppu::CYCLES_PER_LINE {
             self.x = 0;
             self.scanline += 1;
-            match self.scanline as usize {
+            match self.scanline {
                 Ppu::LAST_LINE => {
                     self.scanline = -1;
-                    self.status.set_vblank(false);
+                    self.status.0 = 0;
                     self.frame = [0; 256 * 240];
                 }
                 Ppu::VBLANK_START_LINE => {
@@ -125,81 +152,176 @@ impl Ppu {
     }
 
     fn render_tick(&mut self) {
-        let tile_fetch = matches!(self.x, 0..=255 | 320..=355);
+        let tile_fetch = matches!(self.x, 0..=255 | 320..=335);
 
         match (self.x % 8, tile_fetch) {
-            (2, true) => {
-                // Read attribute
-                self.read_addr = 0x23C0
-                    + 0x400 * self.vaddr.base_nametable()
-                    + 8 * self.vaddr.y_coarse() / 4
-                    + self.vaddr.x_coarse() / 4;
-            }
             (0, _) | (2, false) => {
-                // Read tile data (for sprites on (2, false))
+                // Read nametable (for sprites on (2, false))
                 self.read_addr = 0x2000 + (self.vaddr.addr() & 0xFFF);
-                if self.mask.show_bg() {
-                    if self.x == 304 && self.scanline == -1 {
-                        self.vaddr = self.scroll;
-                    } else if self.x == 256 {
-                        self.vaddr.set_x_coarse(self.scroll.x_coarse());
-                        self.vaddr
-                            .set_base_nametable_h(self.scroll.base_nametable_h());
-                    }
-                }
             }
             (1, false) => {
                 // Todo: odd/even frame toggle?
-                self.pattern_addr = 0x1000 * self.ctrl.bg_half() as u16
+                self.pattern_addr = 0x1000 * self.ctrl.bg_half()
                     + 16 * self.internal_read(self.read_addr) as u16
                     + self.vaddr.y_fine() as u16;
             }
             (1, true) => {
                 // Todo: odd/even frame toggle?
-                self.pattern_addr = 0x1000 * self.ctrl.bg_half() as u16
+                self.pattern_addr = 0x1000 * self.ctrl.bg_half()
                     + 16 * self.internal_read(self.read_addr) as u16
                     + self.vaddr.y_fine() as u16;
 
                 self.bg_pattern_shift =
-                    (self.bg_pattern_shift >> 16) + 0x10000 * self.pattern as u32;
+                    (self.bg_pattern_shift >> 16) | ((self.pattern as u32) << 16);
+                // Repeat attribute 8 times
                 self.bg_attr_shift =
                     (self.bg_attr_shift >> 16) + 0x55550000 * self.attribute as u32;
             }
+            (2, true) => {
+                // Read attribute
+                self.read_addr = 0x23C0
+                    + 0x400 * self.vaddr.base_nametable()
+                    + 8 * (self.vaddr.y_coarse() >> 2)
+                    + (self.vaddr.x_coarse() >> 2);
+            }
             (3, true) => {
-                // println!("Reading attribute from address {:X}", self.read_addr);
                 let tile_attribute = self.internal_read(self.read_addr);
-                // Each attribute maps to two tiles
+                // Each attribute byte maps to 4x4 tiles
+                // And each 2-bit attribute covers 2x2 tiles
                 let offset_in_byte =
                     (self.vaddr.x_coarse() & 0x2) + 2 * (self.vaddr.y_coarse() & 0x2);
                 self.attribute = (tile_attribute >> offset_in_byte) & 0x3;
+
+                // Increment X coordinate to prepare for next tile
+                // Go to next nametable if coordinate wraps
                 if self.vaddr.inc_x_coarse() {
+                    // println!("x coarse wrapped at {}", self.x);
                     self.vaddr
                         .set_base_nametable_h(1 - self.vaddr.base_nametable_h());
                 }
-                if self.x == 251
-                    && self.vaddr.inc_y_fine()
-                    && !self.vaddr.inc_y_coarse()
-                    && self.vaddr.y_coarse() == 30
-                {
-                    self.vaddr.set_y_coarse(0);
-                    self.vaddr
-                        .set_base_nametable_v(1 - self.vaddr.base_nametable_v());
-                }
             }
-            (3, false) => if self.sp_render_idx < self.sp_out_idx {},
+            // Prepare sprite for rendering
+            (3, false) if self.sp_render_idx < self.sp_out_idx => {
+                let sprite = &self.prefetch_oam[self.sp_render_idx];
+                self.render_oam[self.sp_render_idx] = *sprite;
+                let mut sprite_line = self.scanline as u16 - sprite.y_pos as u16;
+                // Vertical flipping
+                if sprite.attributes & 0x80 != 0 {
+                    sprite_line = self.ctrl.act_sprite_size() as u16 - 1 - sprite_line;
+                };
+                // Set tile base address based on sprite size & tile index
+                self.pattern_addr = if self.ctrl.sprite_size() {
+                    0x1000 * (sprite.tile_idx as u16 & 0x01)
+                        + 0x10 * ((sprite.tile_idx as u16) & 0xFE)
+                } else {
+                    0x1000 * self.ctrl.sprite_half() + 0x10 * (sprite.tile_idx as u16)
+                };
+                // Go to correct line in tile
+                self.pattern_addr += (sprite_line & 0x7) + (sprite_line & 0x8) * 2;
+            }
             (5, _) => self.pattern = self.internal_read(self.pattern_addr) as u16,
             (7, _) => {
                 // Interleave two bytes of pattern data
-                let p = self.pattern | ((self.internal_read(self.pattern_addr | 8) as u16) << 8);
+                let p = self.pattern | ((self.internal_read(self.pattern_addr + 8) as u16) << 8);
                 let p = (p & 0xF00F) | ((p & 0x0F00) >> 4) | ((p & 0x00F0) << 4);
                 let p = (p & 0xC3C3) | ((p & 0x3030) >> 2) | ((p & 0x0C0C) << 2);
                 let p = (p & 0x9999) | ((p & 0x4444) >> 1) | ((p & 0x2222) << 1);
                 self.pattern = p;
                 if !tile_fetch && self.sp_render_idx < self.sp_out_idx {
-                    // Todo: Sprite things
+                    self.render_oam[self.sp_render_idx].pattern = self.pattern;
+                    self.sp_render_idx += 1;
                 }
             }
             _ => (),
+        }
+
+        // Reset sprite status at the start of the line
+        if self.x == 0 {
+            self.sp_in_idx = 0;
+            self.sp_out_idx = 0;
+            if self.mask.show_sprites() {
+                self.oam_addr = 0;
+            }
+        }
+
+        if self.mask.show_bg() {
+            // Reset vertical & horizontal scrolling at start of frame
+            if self.x == 304 && self.scanline == -1 {
+                self.vaddr.set_addr(self.scroll.addr());
+            }
+            // Reset horizontal scrolling at the end of each scanline
+            else if self.x == 256 {
+                self.vaddr.set_x_coarse(self.scroll.x_coarse());
+                self.vaddr
+                    .set_base_nametable_h(self.scroll.base_nametable_h());
+                self.sp_render_idx = 0;
+            }
+        }
+
+        // Increment Y coordinate at the end of scanline
+        // Go to next nametable if coordinate wraps
+        if self.x == 251 && !self.vaddr.inc_y() && self.vaddr.y_coarse() == 30 {
+            self.vaddr.set_y_coarse(0);
+            self.vaddr
+                .set_base_nametable_v(1 - self.vaddr.base_nametable_v());
+        }
+
+        // Evaluate sprites visible on next scanline
+        // Every other cycle is just read from current OAM address, see else branch
+        let sprite_store_cycle = self.x >= 64 && self.x < 256 && self.x % 2 != 0;
+        if sprite_store_cycle {
+            let oam_addr = self.oam_addr & 0x3;
+            self.oam_addr = self.oam_addr.wrapping_add(1);
+
+            match oam_addr {
+                0 if self.sp_in_idx >= 64 => {
+                    self.oam_addr = 0;
+                }
+                0 => {
+                    self.sp_in_idx += 1;
+                    if self.sp_out_idx < 8 {
+                        self.prefetch_oam[self.sp_out_idx].y_pos = self.sprite_data;
+                        self.prefetch_oam[self.sp_out_idx].sprite_idx = self.oam_addr / 4;
+                        let y_start = self.sprite_data as isize;
+                        let y_end =
+                            self.sprite_data.wrapping_add(self.ctrl.act_sprite_size()) as isize;
+                        // If sprite not in range, go to next one
+                        if self.scanline < y_start || self.scanline >= y_end {
+                            self.oam_addr = self.oam_addr.wrapping_add(3);
+                            // Weird hardcoded value for sprite #2
+                            if self.sp_in_idx == 2 {
+                                self.oam_addr = 8;
+                            }
+                        }
+                    }
+                }
+                1 => {
+                    if self.sp_out_idx < 8 {
+                        self.prefetch_oam[self.sp_out_idx].tile_idx = self.sprite_data;
+                    }
+                }
+                2 => {
+                    if self.sp_out_idx < 8 {
+                        self.prefetch_oam[self.sp_out_idx].attributes = self.sprite_data;
+                    }
+                }
+                3 => {
+                    if self.sp_out_idx < 8 {
+                        self.prefetch_oam[self.sp_out_idx].x_pos = self.sprite_data;
+                        self.sp_out_idx += 1;
+                    } else {
+                        // Found more than 8 sprites
+                        // println!("Sprite overflow");
+                        self.status.set_sprite_overflow(true);
+                    }
+                    if self.sp_in_idx == 2 {
+                        self.oam_addr = 8;
+                    }
+                }
+                _ => unimplemented!("Shouldn't be reachable"),
+            }
+        } else {
+            self.sprite_data = self.oam[self.oam_addr as usize];
         }
     }
 
@@ -210,21 +332,32 @@ impl Ppu {
         let (mut pixel, mut attribute) = (0, 0);
 
         if draw_bg {
-            (pixel, attribute) = self.draw_bg_pixel();
+            (pixel, attribute) = self.bg_pixel();
+        }
+        // else if (self.vaddr.addr() & 0x3F00) == 0x3F00 && !draw_bg && !draw_sp {
+        //     pixel = self.vaddr.addr() as u8;
+        // }
+
+        if draw_sp {
+            if let Some(sprite_pixel) = self.sprite_pixel(pixel) {
+                if !sprite_pixel.0 || pixel == 0 {
+                    pixel = sprite_pixel.1;
+                    attribute = sprite_pixel.2;
+                }
+            }
         }
 
-        if draw_sp {}
-
+        let palette_idx = (attribute * 4 + pixel) as usize;
         let greyscale_mask = if self.mask.greyscale() { 0x30 } else { 0x3F };
-        let pixel = self.palette[((attribute * 4 + pixel) & 0x1F) as usize] & greyscale_mask;
+        let pixel = self.palette[palette_idx] & greyscale_mask;
         self.frame[self.scanline as usize * 256 + self.x] = pixel;
     }
 
-    fn draw_bg_pixel(&self) -> (u8, u8) {
+    fn bg_pixel(&self) -> (u8, u8) {
         // Scrolling within the current tile
         let fine_x = (self.x & 0x7) as u8;
-        let tile_x_pos = (fine_x + (self.scroll.x_fine() + 8 * (fine_x != 0) as u8)) & 0xF;
-        let shift = (0xF - tile_x_pos) * 2;
+        let tile_x = (fine_x + self.scroll.x_fine() + 8 * (fine_x != 0) as u8) & 0xF;
+        let shift = (0xF - tile_x) * 2;
 
         let pixel = ((self.bg_pattern_shift >> shift) & 0x3) as u8;
         let attribute = if pixel > 0 {
@@ -233,6 +366,35 @@ impl Ppu {
             0
         };
         (pixel, attribute)
+    }
+
+    fn sprite_pixel(&mut self, pixel: u8) -> Option<(bool, u8, u8)> {
+        for sprite in self.render_oam.iter().take(self.sp_render_idx) {
+            // Check current X position against sprite position
+            let mut offset = (self.x as u8).wrapping_sub(sprite.x_pos);
+            if offset >= 8 {
+                continue;
+            }
+            // Vertical flip
+            if sprite.attributes & 0x40 == 0 {
+                offset = 7 - offset;
+            }
+            let sp_pixel = (sprite.pattern >> (offset * 2)) & 0x3;
+            // Skip transparent pixels
+            if sp_pixel == 0 {
+                continue;
+            }
+            if pixel > 0 && sprite.sprite_idx == 0 {
+                println!("Sprite zero hit");
+                self.status.set_sprite0_hit(true);
+            }
+            return Some((
+                sprite.attributes & 0x20 != 0,
+                sp_pixel as u8,
+                (sprite.attributes & 3) + 4,
+            ));
+        }
+        None
     }
 
     pub fn read(&mut self, addr: u16) -> u8 {
@@ -293,8 +455,8 @@ impl Ppu {
         let addr = (addr & 0x3FFF) as usize;
         match addr {
             0..=0x1FFF => self.chr[addr],
-            0x3F00..=0x3F1F => panic!("Internal read to palette"),
-            _ => self.vram[addr & 0x3FF],
+            0x3F00.. => panic!("Internal read to palette"),
+            _ => self.vram[addr & 0x7FF],
         }
     }
 

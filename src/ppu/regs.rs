@@ -48,8 +48,8 @@ bitfield! {
 
     pub field nametable:       u8 = [0..=1];
     pub field increment:       bool = [2];
-    pub field sprite_half:     usize = [3];
-    pub field bg_half:         usize = [4];
+    pub field sprite_half:     u16 = [3];
+    pub field bg_half:         u16 = [4];
     pub field sprite_size:     bool = [5];
     pub field ppu_master:      bool = [6];
     pub field generate_nmi:    bool = [7];
@@ -61,6 +61,14 @@ impl ControllerReg {
             32
         } else {
             1
+        }
+    }
+
+    pub fn act_sprite_size(&self) -> u8 {
+        if self.sprite_size() {
+            16
+        } else {
+            8
         }
     }
 }
@@ -123,13 +131,6 @@ impl ScrollReg {
         } else {
             self.set_x(data);
         }
-        if self.x() > 0 || self.y() > 0 {
-            println!(
-                "Vertical scroll is now {}, horizontal {}",
-                self.y(),
-                self.x()
-            );
-        }
         self.on_vert_scroll = !self.on_vert_scroll;
     }
 
@@ -138,18 +139,8 @@ impl ScrollReg {
         self.x_coarse() == 0
     }
 
-    pub fn _inc_x_fine(&mut self) -> bool {
-        self.set_x_fine((self.x_fine() + 1) & 0x7);
-        self.x_fine() == 0
-    }
-
-    pub fn inc_y_coarse(&mut self) -> bool {
-        self.set_y_coarse((self.y_coarse() + 1) & 0x1F);
-        self.y_coarse() == 0
-    }
-
-    pub fn inc_y_fine(&mut self) -> bool {
-        self.set_y_fine((self.y_fine() + 1) & 0x7);
-        self.y_fine() == 0
+    pub fn inc_y(&mut self) -> bool {
+        self.set_y(self.y().wrapping_add(1));
+        self.y() == 0
     }
 }

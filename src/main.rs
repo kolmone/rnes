@@ -23,7 +23,7 @@ use sdl2::{
 use std::{
     collections::HashMap,
     env,
-    thread::sleep,
+    thread::{sleep, yield_now},
     time::{Duration, SystemTime},
 };
 
@@ -74,7 +74,9 @@ fn run_rom(file: &str, do_trace: bool, render_debug: bool) {
     let bus = Bus::new(
         Rom::new(rom).unwrap(),
         |ppu: &Ppu, controller: &mut Controller| {
-            while SystemTime::now() < expected_timestamp {}
+            while SystemTime::now() < expected_timestamp {
+                yield_now();
+            }
             // expected_timestamp = SystemTime::now() + Duration::from_nanos(63613);
             expected_timestamp = SystemTime::now() + Duration::from_micros(16667);
 
@@ -85,6 +87,7 @@ fn run_rom(file: &str, do_trace: bool, render_debug: bool) {
                     Event::Quit { .. } => std::process::exit(0),
                     Event::KeyDown { keycode, .. } => {
                         if let Some(key) = keymap.get(&keycode.unwrap_or(Keycode::Ampersand)) {
+                            println!("Button pressed");
                             controller.set_button_state(*key, true);
                         }
                     }
