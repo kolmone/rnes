@@ -210,6 +210,7 @@ impl<'a> Cpu<'a> {
     fn branch_relative(&mut self) {
         let offset = ((self.bus.read(self.program_counter) as i8) as i16) as u16;
         self.program_counter = self.program_counter.wrapping_add(offset);
+        self.bus.tick(1);
     }
 
     fn bcc(&mut self) {

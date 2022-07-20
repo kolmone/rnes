@@ -136,6 +136,7 @@ impl Ppu {
                 Ppu::LAST_LINE => {
                     self.scanline = -1;
                     self.status.0 = 0;
+                    // println!("Vblank cleared");
                     self.frame = [0; 256 * 240];
                 }
                 Ppu::VBLANK_START_LINE => {
