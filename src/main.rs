@@ -74,10 +74,12 @@ fn run_rom(file: &str, do_trace: bool, render_debug: bool) {
     let bus = Bus::new(
         Rom::new(rom).unwrap(),
         |ppu: &Ppu, controller: &mut Controller| {
+            while SystemTime::now() + Duration::from_millis(1) < expected_timestamp {
+                sleep(Duration::from_millis(1));
+            }
             while SystemTime::now() < expected_timestamp {
                 yield_now();
             }
-            // expected_timestamp = SystemTime::now() + Duration::from_nanos(63613);
             expected_timestamp = SystemTime::now() + Duration::from_micros(16667);
 
             renderer.render_screen(ppu, &mut canvas, &mut texture, render_debug);

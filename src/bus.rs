@@ -71,9 +71,14 @@ impl Rom {
         let prg_rom_start = 16 + if skip_trainer { 512 } else { 0 };
         let chr_rom_start = prg_rom_start + prg_rom_size;
 
+        let mut chr = raw[chr_rom_start..(chr_rom_start + chr_rom_size)].to_vec();
+        if chr.len() < 0x2000 {
+            chr.resize(0x2000, 0);
+        }
+
         Ok(Rom {
             prg: raw[prg_rom_start..(prg_rom_start + prg_rom_size)].to_vec(),
-            chr: raw[chr_rom_start..(chr_rom_start + chr_rom_size)].to_vec(),
+            chr,
             mapper,
             mirroring: screen_mirroring,
         })
@@ -175,5 +180,15 @@ impl<'call> Bus<'call> {
             self.tick(2);
         }
         self.tick(1);
+    }
+}
+
+mod cartridge {
+    pub struct Cartridge {
+        prg_rom: Vec<u8>,
+        prg_ram: Vec<u8>,
+        chr_rom: Vec<u8>,
+        chr_ram: Vec<u8>,
+        mapper: u8,
     }
 }

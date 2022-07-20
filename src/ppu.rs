@@ -1,7 +1,6 @@
 mod regs;
 
 use crate::bus::Mirroring;
-use core::panic;
 use regs::{AddrReg, ControllerReg, MaskReg, StatusReg};
 
 use self::regs::ScrollReg;
@@ -195,7 +194,6 @@ impl Ppu {
                 // Increment X coordinate to prepare for next tile
                 // Go to next nametable if coordinate wraps
                 if self.vaddr.inc_x_coarse() {
-                    // println!("x coarse wrapped at {}", self.x);
                     self.vaddr
                         .set_base_nametable_h(1 - self.vaddr.base_nametable_h());
                 }
@@ -385,7 +383,7 @@ impl Ppu {
                 continue;
             }
             if pixel > 0 && sprite.sprite_idx == 0 {
-                println!("Sprite zero hit");
+                // println!("Sprite zero hit");
                 self.status.set_sprite0_hit(true);
             }
             return Some((
@@ -423,7 +421,11 @@ impl Ppu {
             REG_OAM_ADDR => self.oam_addr = data,
             REG_OAM_DATA => self.oam_write(data),
             REG_SCROLL => self.scroll.write(data),
-            REG_ADDR => self.addr.write(data),
+            REG_ADDR => {
+                self.addr.write(data);
+                self.scroll.set_addr(self.addr.get());
+                self.vaddr.set_addr(self.addr.get());
+            }
             REG_DATA => self.data_write(data),
             _ => panic!("Write to read-only PPU register at 0x{:x}", addr),
         }
@@ -440,7 +442,7 @@ impl Ppu {
                 old_buf
             }
             0x2000..=0x3EFF | 0x3F20..=0x3FFF => {
-                self.read_buf = self.vram[addr as usize];
+                self.read_buf = self.vram[self.mirrored_vram_addr(addr)];
                 old_buf
             }
             0x3F00..=0x3F1F => {
@@ -452,11 +454,11 @@ impl Ppu {
     }
 
     fn internal_read(&mut self, addr: u16) -> u8 {
-        let addr = (addr & 0x3FFF) as usize;
+        let addr = addr & 0x3FFF;
         match addr {
-            0..=0x1FFF => self.chr[addr],
+            0..=0x1FFF => self.chr[addr as usize],
             0x3F00.. => panic!("Internal read to palette"),
-            _ => self.vram[addr & 0x7FF],
+            _ => self.vram[self.mirrored_vram_addr(addr)],
         }
     }
 
@@ -465,7 +467,8 @@ impl Ppu {
         self.addr.increment(self.ctrl.get_increment());
 
         match addr {
-            0..=0x1FFF => panic!("Write to CHR ROM address {:X}", addr),
+            // 0..=0x1FFF => println!("Write to CHR ROM address {:X}", addr),
+            0..=0x1FFF => self.chr[addr as usize] = data,
             0x2000..=0x3EFF | 0x3F20..=0x3FFF => self.vram[self.mirrored_vram_addr(addr)] = data,
             0x3F00..=0x3F1F => self.palette[self.palette_idx(addr)] = data,
             _ => panic!("Data write to unsupported PPU address at 0x{:x}", addr),
