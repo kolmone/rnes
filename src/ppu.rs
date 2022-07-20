@@ -441,11 +441,11 @@ impl Ppu {
                 self.read_buf = self.chr[addr as usize];
                 old_buf
             }
-            0x2000..=0x3EFF | 0x3F20..=0x3FFF => {
+            0x2000..=0x3EFF => {
                 self.read_buf = self.vram[self.mirrored_vram_addr(addr)];
                 old_buf
             }
-            0x3F00..=0x3F1F => {
+            0x3F00..=0x3FFF => {
                 self.read_buf = self.vram[self.mirrored_vram_addr(addr)];
                 self.palette[self.palette_idx(addr)]
             }
@@ -469,15 +469,17 @@ impl Ppu {
         match addr {
             // 0..=0x1FFF => println!("Write to CHR ROM address {:X}", addr),
             0..=0x1FFF => self.chr[addr as usize] = data,
-            0x2000..=0x3EFF | 0x3F20..=0x3FFF => self.vram[self.mirrored_vram_addr(addr)] = data,
-            0x3F00..=0x3F1F => self.palette[self.palette_idx(addr)] = data,
+            0x2000..=0x3EFF => self.vram[self.mirrored_vram_addr(addr)] = data,
+            0x3F00..=0x3FFF => self.palette[self.palette_idx(addr)] = data,
             _ => panic!("Data write to unsupported PPU address at 0x{:x}", addr),
         }
     }
 
     fn oam_read(&mut self) -> u8 {
         let addr = self.oam_addr;
-        self.oam_addr = self.oam_addr.wrapping_add(1);
+        if addr % 4 == 2 {
+            return self.oam[addr as usize] & 0xE3;
+        }
         self.oam[addr as usize]
     }
 
@@ -503,12 +505,11 @@ impl Ppu {
     }
 
     fn palette_idx(&self, addr: u16) -> usize {
-        let addr = if addr >= 0x3f10 && addr % 4 == 0 {
-            addr - 0x3f10
+        if addr >= 0x3f10 && addr % 4 == 0 {
+            0
         } else {
-            addr - 0x3f00
-        };
-        addr as usize
+            (addr & 0x001f) as usize
+        }
     }
 }
 
@@ -669,6 +670,7 @@ mod test {
         ppu.write(0x2003, 0x21);
 
         assert_eq!(ppu.read(0x2004), 0x56);
+        assert_eq!(ppu.read(0x2004), 0x56);
     }
 
     #[test]
@@ -677,8 +679,10 @@ mod test {
 
         ppu.write(0x2003, 0x21);
         ppu.write(0x2004, 0x56);
+        ppu.write(0x2004, 0x65);
 
         assert_eq!(ppu.oam[0x21], 0x56);
+        assert_eq!(ppu.oam[0x22], 0x65);
     }
 
     #[test]

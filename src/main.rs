@@ -74,13 +74,16 @@ fn run_rom(file: &str, do_trace: bool, render_debug: bool) {
     let bus = Bus::new(
         Rom::new(rom).unwrap(),
         |ppu: &Ppu, controller: &mut Controller| {
-            while SystemTime::now() + Duration::from_millis(1) < expected_timestamp {
-                sleep(Duration::from_millis(1));
-            }
-            while SystemTime::now() < expected_timestamp {
+            let mut now = SystemTime::now();
+            while now < expected_timestamp {
                 yield_now();
+                now = SystemTime::now();
             }
-            expected_timestamp = SystemTime::now() + Duration::from_micros(16667);
+            expected_timestamp += Duration::from_micros(16667);
+            // println!(
+            //     "Current time is {:?}\nNext systemtime is {:?}",
+            //     now, expected_timestamp
+            // );
 
             renderer.render_screen(ppu, &mut canvas, &mut texture, render_debug);
 
@@ -226,29 +229,29 @@ fn run_snake() {
 }
 
 fn trace(cpu: &mut Cpu) {
-    // println!(
-    //     "{:04X}  {:02X}  {:3} {:02X} {:02X}  A:{:02X} X:{:02X} Y:{:02X} P:{:02X} SP:{:02X}",
-    //     cpu.program_counter,
-    //     cpu.bus.read(cpu.program_counter),
-    //     cpu.mnemonic,
-    //     cpu.bus.read(cpu.program_counter + 1),
-    //     cpu.bus.read(cpu.program_counter + 2),
-    //     cpu.register_a,
-    //     cpu.register_x,
-    //     cpu.register_y,
-    //     cpu.status.0,
-    //     cpu.stack_pointer
-    // );
     println!(
-        "{:04X}  {:02X}  A:{:02X} X:{:02X} Y:{:02X} P:{:02X} SP:{:02X}",
+        "{:04X}  {:02X}  {:3} {:02X} {:02X}  A:{:02X} X:{:02X} Y:{:02X} P:{:02X} SP:{:02X}",
         cpu.program_counter,
         cpu.bus.read(cpu.program_counter),
+        cpu.mnemonic,
+        cpu.bus.read(cpu.program_counter + 1),
+        cpu.bus.read(cpu.program_counter + 2),
         cpu.register_a,
         cpu.register_x,
         cpu.register_y,
         cpu.status.0,
         cpu.stack_pointer
     );
+    // println!(
+    //     "{:04X}  {:02X}  A:{:02X} X:{:02X} Y:{:02X} P:{:02X} SP:{:02X}",
+    //     cpu.program_counter,
+    //     cpu.bus.read(cpu.program_counter),
+    //     cpu.register_a,
+    //     cpu.register_x,
+    //     cpu.register_y,
+    //     cpu.status.0,
+    //     cpu.stack_pointer
+    // );
 }
 
 fn run_nestest() {

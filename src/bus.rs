@@ -7,6 +7,7 @@ use crate::{
 
 pub struct Bus<'call> {
     ram: [u8; 0x800],
+    prg_ram: [u8; 0x1000],
     prg: Vec<u8>,
     ppu: Ppu,
     cycles: usize,
@@ -49,6 +50,7 @@ impl Rom {
         }
 
         let mapper = (raw[7] & 0b1111_0000) | (raw[6] >> 4);
+        println!("Mapper is {}", mapper);
 
         let ines_ver = (raw[7] >> 2) & 0b11;
         if ines_ver != 0 {
@@ -103,6 +105,7 @@ impl<'call> Bus<'call> {
     {
         Self {
             ram: [0; 0x800],
+            prg_ram: [0; 0x1000],
             prg: rom.prg,
             ppu: Ppu::new(rom.chr, rom.mirroring),
             controller: Controller::new(),
@@ -131,6 +134,7 @@ impl<'call> Bus<'call> {
             ROM_START.. => self.read_prg(addr),
             CONTROLLER1_ADDR => self.controller.read(),
             CONTROLLER2_ADDR => 0,
+            0x6000..=0x7FFF => self.prg_ram[(addr - 0x6000) as usize],
             _ => {
                 println!("Read from unknown address 0x{:X}", addr);
                 0
@@ -152,6 +156,7 @@ impl<'call> Bus<'call> {
             ROM_START.. => println!("Write to ROM space at address 0x{:X}", addr),
             CONTROLLER1_ADDR => self.controller.write(data),
             // _ => (),
+            0x6000..=0x7FFF => self.prg_ram[(addr - 0x6000) as usize] = data,
             _ => println!("Write to unknown address 0x{:X}", addr),
         }
     }
