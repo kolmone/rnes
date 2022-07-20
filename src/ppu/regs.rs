@@ -1,47 +1,5 @@
 use bitbash::bitfield;
 
-pub struct AddrReg {
-    msb: u8,
-    lsb: u8,
-    on_msb: bool,
-}
-
-impl AddrReg {
-    pub fn new() -> Self {
-        Self {
-            msb: 0,
-            lsb: 0,
-            on_msb: true,
-        }
-    }
-
-    pub fn write(&mut self, data: u8) {
-        if self.on_msb {
-            self.msb = data & 0x3F;
-        } else {
-            self.lsb = data;
-        }
-
-        self.on_msb = !self.on_msb;
-    }
-
-    pub fn increment(&mut self, inc: u8) {
-        let old_lsb = self.lsb;
-        self.lsb = old_lsb.wrapping_add(inc);
-        if self.lsb < old_lsb {
-            self.msb = self.msb.wrapping_add(1) & 0x3F;
-        }
-    }
-
-    pub fn get(&self) -> u16 {
-        (self.msb as u16) << 8 | (self.lsb as u16)
-    }
-
-    pub fn reset_latch(&mut self) {
-        self.on_msb = true;
-    }
-}
-
 bitfield! {
     pub struct ControllerReg(pub u8);
     pub new();
@@ -56,7 +14,7 @@ bitfield! {
 }
 
 impl ControllerReg {
-    pub fn get_increment(&self) -> u8 {
+    pub fn get_increment(&self) -> u16 {
         if self.increment() {
             32
         } else {
@@ -100,7 +58,7 @@ bitfield! {
     #[derive(Copy, Clone)]
     pub struct ScrollReg {
         pub data: u32,
-        pub on_vert_scroll: bool,
+        pub offset: bool,
     }
 
     pub field addr:             u16  = data[3..19];
@@ -121,17 +79,17 @@ impl ScrollReg {
     pub fn new() -> Self {
         ScrollReg {
             data: 0,
-            on_vert_scroll: false,
+            offset: false,
         }
     }
 
-    pub fn write(&mut self, data: u8) {
-        if self.on_vert_scroll {
+    pub fn write_scroll(&mut self, data: u8) {
+        if self.offset {
             self.set_y(data);
         } else {
             self.set_x(data);
         }
-        self.on_vert_scroll = !self.on_vert_scroll;
+        self.offset = !self.offset;
     }
 
     pub fn inc_x_coarse(&mut self) -> bool {
@@ -142,5 +100,23 @@ impl ScrollReg {
     pub fn inc_y(&mut self) -> bool {
         self.set_y(self.y().wrapping_add(1));
         self.y() == 0
+    }
+
+    pub fn increment(&mut self, inc: u16) {
+        self.set_addr((self.addr() + inc) & 0x3fff);
+    }
+
+    pub fn reset_latch(&mut self) {
+        self.offset = false;
+    }
+
+    pub fn write_addr(&mut self, data: u8) {
+        if self.offset {
+            self.set_addr_lo(data);
+        } else {
+            self.set_addr_hi(data & 0x3F);
+        }
+
+        self.offset = !self.offset;
     }
 }

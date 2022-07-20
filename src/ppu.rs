@@ -1,7 +1,7 @@
 mod regs;
 
 use crate::bus::Mirroring;
-use regs::{AddrReg, ControllerReg, MaskReg, StatusReg};
+use regs::{ControllerReg, MaskReg, StatusReg};
 
 use self::regs::ScrollReg;
 
@@ -25,7 +25,6 @@ pub struct Ppu {
     pub mirroring: Mirroring,
 
     ctrl: ControllerReg,
-    addr: AddrReg,
     mask: MaskReg,
     status: StatusReg,
     scroll: ScrollReg,
@@ -91,7 +90,6 @@ impl Ppu {
             render_oam: [empty_sprite; 8],
             mirroring,
             ctrl: ControllerReg::new(),
-            addr: AddrReg::new(),
             mask: MaskReg::new(),
             status: StatusReg::new(),
             oam_addr: 0,
@@ -399,7 +397,7 @@ impl Ppu {
         let addr = addr & PPU_BUS_MIRROR_MASK;
         match addr {
             REG_STATUS => {
-                self.addr.reset_latch();
+                self.scroll.reset_latch();
                 let old_status = self.status.0;
                 self.status.set_vblank(false);
                 old_status
@@ -420,11 +418,13 @@ impl Ppu {
             REG_MASK => self.mask.0 = data,
             REG_OAM_ADDR => self.oam_addr = data,
             REG_OAM_DATA => self.oam_write(data),
-            REG_SCROLL => self.scroll.write(data),
+            REG_SCROLL => self.scroll.write_scroll(data),
             REG_ADDR => {
-                self.addr.write(data);
-                self.scroll.set_addr(self.addr.get());
-                self.vaddr.set_addr(self.addr.get());
+                self.scroll.write_addr(data);
+                // If LSB was just written, update address in v
+                if !self.scroll.offset {
+                    self.vaddr.set_addr(self.scroll.addr());
+                }
             }
             REG_DATA => self.data_write(data),
             _ => panic!("Write to read-only PPU register at 0x{:x}", addr),
@@ -432,8 +432,8 @@ impl Ppu {
     }
 
     fn data_read(&mut self) -> u8 {
-        let addr = self.addr.get();
-        self.addr.increment(self.ctrl.get_increment());
+        let addr = self.vaddr.addr();
+        self.vaddr.increment(self.ctrl.get_increment());
 
         let old_buf = self.read_buf;
         match addr {
@@ -446,7 +446,7 @@ impl Ppu {
                 old_buf
             }
             0x3F00..=0x3F1F => {
-                self.read_buf = self.vram[addr as usize];
+                self.read_buf = self.vram[self.mirrored_vram_addr(addr)];
                 self.palette[self.palette_idx(addr)]
             }
             _ => panic!("Data read from unsupported PPU address at 0x{:x}", addr),
@@ -463,8 +463,8 @@ impl Ppu {
     }
 
     fn data_write(&mut self, data: u8) {
-        let addr = self.addr.get();
-        self.addr.increment(self.ctrl.get_increment());
+        let addr = self.vaddr.addr();
+        self.vaddr.increment(self.ctrl.get_increment());
 
         match addr {
             // 0..=0x1FFF => println!("Write to CHR ROM address {:X}", addr),
@@ -545,40 +545,40 @@ mod test {
     }
 
     #[test]
-    fn test_addr_reg_write() {
-        let mut addr_reg = AddrReg::new();
-        assert_eq!(addr_reg.get(), 0x0000);
+    fn test_addr_write() {
+        let mut reg = ScrollReg::new();
+        assert_eq!(reg.addr(), 0x0000);
 
-        addr_reg.write(0x32);
-        addr_reg.write(0x10);
+        reg.write_addr(0x32);
+        reg.write_addr(0x10);
 
-        assert_eq!(addr_reg.get(), 0x3210);
+        assert_eq!(reg.addr(), 0x3210);
     }
 
     #[test]
-    fn test_addr_reg_reset() {
-        let mut addr_reg = AddrReg::new();
+    fn test_addr_reset() {
+        let mut reg = ScrollReg::new();
 
-        addr_reg.write(0x32);
-        addr_reg.reset_latch();
-        addr_reg.write(0x10);
-        addr_reg.write(0x32);
+        reg.write_addr(0x32);
+        reg.reset_latch();
+        reg.write_addr(0x10);
+        reg.write_addr(0x32);
 
-        assert_eq!(addr_reg.get(), 0x1032);
+        assert_eq!(reg.addr(), 0x1032);
     }
 
     #[test]
-    fn test_addr_reg_increment() {
-        let mut addr_reg = AddrReg::new();
+    fn test_addr_increment() {
+        let mut reg = ScrollReg::new();
 
-        addr_reg.write(0x3f);
-        addr_reg.write(0x00);
-        assert_eq!(addr_reg.get(), 0x3f00);
+        reg.write_addr(0x3f);
+        reg.write_addr(0x00);
+        assert_eq!(reg.addr(), 0x3f00);
 
-        addr_reg.increment(0xff);
-        assert_eq!(addr_reg.get(), 0x3fff);
-        addr_reg.increment(0x1);
-        assert_eq!(addr_reg.get(), 0x0000);
+        reg.increment(0xff);
+        assert_eq!(reg.addr(), 0x3fff);
+        reg.increment(0x1);
+        assert_eq!(reg.addr(), 0x0000);
     }
 
     #[test]
@@ -588,7 +588,7 @@ mod test {
         ppu.write(0x2006, 0x3f);
         ppu.write(0x2006, 0x12);
 
-        assert_eq!(ppu.addr.get(), 0x3f12);
+        assert_eq!(ppu.vaddr.addr(), 0x3f12);
     }
 
     #[test]
