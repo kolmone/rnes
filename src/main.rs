@@ -1,6 +1,7 @@
 #![warn(trivial_numeric_casts)]
 #![allow(clippy::bad_bit_mask)]
 
+mod apu;
 mod bus;
 mod controller;
 mod cpu;
@@ -12,7 +13,13 @@ use controller::{Button, Controller};
 use cpu::Cpu;
 use ppu::Ppu;
 use renderer::Renderer;
-use sdl2::{event::Event, keyboard::Keycode, pixels::PixelFormatEnum};
+use rubato::{InterpolationParameters, SincFixedIn, SincFixedOut, VecResampler};
+use sdl2::{
+    audio::{AudioCallback, AudioSpecDesired},
+    event::Event,
+    keyboard::Keycode,
+    pixels::PixelFormatEnum,
+};
 use std::{
     collections::HashMap,
     env,
@@ -33,6 +40,83 @@ fn build_keymap() -> HashMap<Keycode, Button> {
     keymap
 }
 
+struct AudioData {
+    data: Vec<f32>,
+    pos: usize,
+}
+
+impl AudioCallback for AudioData {
+    type Channel = f32;
+
+    fn callback(&mut self, out: &mut [f32]) {
+        for sample in out.iter_mut() {
+            *sample = if self.pos >= self.data.len() {
+                0.0
+            } else {
+                let new = self.data[self.pos];
+                self.pos += 1;
+                new
+            }
+        }
+    }
+}
+
+impl AudioData {
+    fn fill(&mut self) {
+        for (idx, sample) in self.data.iter_mut().enumerate() {
+            let mut new_sample = (idx % 0x2000) as f32;
+            new_sample /= 4096.0;
+            *sample = new_sample - 1.0;
+        }
+    }
+}
+// 1789800
+
+fn audio_test() {
+    let sdl = sdl2::init().unwrap();
+    let desired_spec = AudioSpecDesired {
+        freq: Some(48000),
+        channels: Some(1),
+        samples: Some(1024),
+    };
+
+    let params = InterpolationParameters {
+        sinc_len: 256,
+        f_cutoff: 0.95,
+        oversampling_factor: 128,
+        interpolation: rubato::InterpolationType::Linear,
+        window: rubato::WindowFunction::BlackmanHarris2,
+    };
+    let mut resampler =
+        SincFixedIn::<f32>::new(48000.0 / 1789800.0, 1.0, params, 5 * 1789800, 1).unwrap();
+
+    let mut data = AudioData {
+        data: vec![0.0; 5 * 1789800],
+        pos: 0,
+    };
+    data.fill();
+    println!("processing data");
+    let processed = resampler.process(&[data.data], None).unwrap();
+    println!("data processed, len is {}", processed[0].len());
+    let mut new_data = AudioData {
+        data: vec![0.0; processed[0].len()],
+        pos: 0,
+    };
+    for (idx, value) in processed[0].iter().enumerate() {
+        new_data.data[idx] = *value;
+    }
+
+    let audio = sdl.audio().unwrap();
+    let device = audio
+        .open_playback(None, &desired_spec, |spec| {
+            println!("{:?}", spec.freq);
+            new_data
+        })
+        .unwrap();
+    device.resume();
+    std::thread::sleep(Duration::from_millis(5000));
+}
+
 fn run_rom(file: &str, do_trace: bool, render_debug: bool) {
     let sdl = sdl2::init().unwrap();
     let window = sdl
@@ -42,6 +126,7 @@ fn run_rom(file: &str, do_trace: bool, render_debug: bool) {
         .position_centered()
         .build()
         .unwrap();
+
     let mut canvas = window.into_canvas().present_vsync().build().unwrap();
 
     let tex_creator = canvas.texture_creator();
@@ -138,6 +223,11 @@ fn trace(cpu: &mut Cpu) {
 
 fn main() {
     let args: Vec<String> = env::args().collect();
+
+    if args.contains(&"--test".to_owned()) {
+        audio_test();
+        panic!("Sound test done!");
+    }
 
     if args.len() < 2 {
         println!("Must provide at least one parameter!");
