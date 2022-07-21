@@ -75,10 +75,8 @@ impl<'a> Cpu<'a> {
 
     /// Pushes a 16-bit value onto the stack, decrementing stack pointer
     fn push_stack_u16(&mut self, data: u16) {
-        self.stack_pointer = self.stack_pointer.wrapping_sub(1);
-        self.bus
-            .write_u16(STACK_PAGE | self.stack_pointer as u16, data);
-        self.stack_pointer = self.stack_pointer.wrapping_sub(1);
+        self.push_stack((data >> 8) as u8);
+        self.push_stack((data & 0x00FF) as u8);
     }
 
     /// Pulls a 8-bit value from the stack, incrementing stack pointer
@@ -89,10 +87,9 @@ impl<'a> Cpu<'a> {
 
     /// Pulls a 16-bit value from the stack, incrementing stack pointer
     fn pull_stack_u16(&mut self) -> u16 {
-        self.stack_pointer = self.stack_pointer.wrapping_add(1);
-        let lsb = self.bus.read(STACK_PAGE | self.stack_pointer as u16) as u16;
-        self.stack_pointer = self.stack_pointer.wrapping_add(1);
-        lsb | (self.bus.read(STACK_PAGE | self.stack_pointer as u16) as u16) << 8
+        let lsb = self.pull_stack() as u16;
+        let msb = self.pull_stack() as u16;
+        (msb << 8) | lsb
     }
 
     // Used for testing
@@ -129,11 +126,35 @@ impl<'a> Cpu<'a> {
             // Data is in the address indicated by 2-byte parameter incremented by X
             AddressingMode::AbsoluteX => {
                 let addr = self.bus.read_u16(self.program_counter);
+                let msb = addr & 0xFF00;
+                let addr = addr.wrapping_add(self.register_x as u16);
+                if msb != addr & 0xFF00 {
+                    self.bus.tick(1);
+                }
+                addr
+            }
+
+            // Data is in the address indicated by 2-byte parameter incremented by X
+            // No extra tick from page miss
+            AddressingMode::AbsoluteXNoPlus => {
+                let addr = self.bus.read_u16(self.program_counter);
                 addr.wrapping_add(self.register_x as u16)
             }
 
             // Data is in the address indicated by 2-byte parameter incremented by Y
             AddressingMode::AbsoluteY => {
+                let addr = self.bus.read_u16(self.program_counter);
+                let msb = addr & 0xFF00;
+                let addr = addr.wrapping_add(self.register_y as u16);
+                if msb != addr & 0xFF00 {
+                    self.bus.tick(1);
+                }
+                addr
+            }
+
+            // Data is in the address indicated by 2-byte parameter incremented by Y
+            // No extra tick from page miss
+            AddressingMode::AbsoluteYNoPlus => {
                 let addr = self.bus.read_u16(self.program_counter);
                 addr.wrapping_add(self.register_y as u16)
             }
@@ -151,6 +172,20 @@ impl<'a> Cpu<'a> {
 
             // Data is in address indicated by (pointer indicated by parameter) + Y
             AddressingMode::IndirectY => {
+                let param = self.bus.read(self.program_counter);
+                let lsb = self.bus.read(param as u16) as u16;
+                let msb = self.bus.read(param.wrapping_add(1) as u16) as u16;
+                let addr = (msb << 8 | lsb).wrapping_add(self.register_y as u16);
+
+                if addr >> 8 != msb {
+                    self.bus.tick(1);
+                }
+                addr
+            }
+
+            // Data is in address indicated by (pointer indicated by parameter) + Y
+            // No extra tick from page miss
+            AddressingMode::IndirectYNoPlus => {
                 let param = self.bus.read(self.program_counter);
                 let lsb = self.bus.read(param as u16) as u16;
                 let msb = self.bus.read(param.wrapping_add(1) as u16) as u16;
@@ -267,6 +302,22 @@ impl<'a> Cpu<'a> {
         self.status.set_zero(self.register_a & operand == 0);
         self.status.set_overflow(operand & 0x1 << 6 != 0); // store bit 6
         self.status.set_negative(operand & 0x1 << 7 != 0); // and bit 7
+    }
+
+    fn brk(&mut self) {
+        self.push_stack_u16(self.program_counter);
+        self.push_stack(self.status.0 | 0x10);
+
+        // let target = if self.bus.get_nmi_state() && !self.nmi_seen {
+        //     self.nmi_seen = true;
+        // } else {
+        //     self.nmi_seen = self.bus.get_nmi_state();
+        //     self.bus.read_u16(0xFFFE)
+        // };
+        let target = self.bus.read_u16(0xFFFE);
+
+        // println!("BRK jumping to 0x{:x}", target);
+        self.program_counter = target;
     }
 
     fn compare(&mut self, source: u8, mode: &AddressingMode) {
@@ -569,7 +620,11 @@ impl<'a> Cpu<'a> {
         loop {
             let op = self.bus.read(self.program_counter);
 
-            let instruction = instr::INSTRUCTIONS.iter().find(|x| x.opcode == op).unwrap();
+            let instruction = match instr::INSTRUCTIONS.iter().find(|x| x.opcode == op) {
+                Some(i) => i,
+                None => panic!("Opcode at 0x{:04X} was 0x{:02X}", self.program_counter, op),
+            };
+
             self.mnemonic = instruction.mnemonic.to_owned();
             self.cycles = instruction.duration;
 
@@ -588,7 +643,7 @@ impl<'a> Cpu<'a> {
                 "BMI" => self.bmi(),
                 "BNE" => self.bne(),
                 "BPL" => self.bpl(),
-                "BRK" => return,
+                "BRK" => self.brk(),
                 "BVC" => self.bvc(),
                 "BVS" => self.bvs(),
                 "CLC" => self.status.set_carry(false),
@@ -602,6 +657,7 @@ impl<'a> Cpu<'a> {
                 "DEX" => self.dex(),
                 "DEY" => self.dey(),
                 "EOR" => self.eor(&instruction.addressing_mode),
+                "HLT" => return,
                 "INC" => self.inc(&instruction.addressing_mode),
                 "INX" => self.inx(),
                 "INY" => self.iny(),

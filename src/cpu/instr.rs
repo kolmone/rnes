@@ -6,9 +6,12 @@ pub enum AddressingMode {
     ZeroPageY,
     Absolute,
     AbsoluteX,
+    AbsoluteXNoPlus,
     AbsoluteY,
+    AbsoluteYNoPlus,
     IndirectX,
     IndirectY,
+    IndirectYNoPlus,
     NoneAddressing,
 }
 
@@ -40,13 +43,28 @@ impl Instruction {
 
 lazy_static::lazy_static! {
     pub static ref INSTRUCTIONS: Vec<Instruction> = vec![
+        // Halts - just quit the emulator
+        Instruction::new(0x02, "HLT", 1, 1, AddressingMode::NoneAddressing),
+        Instruction::new(0x12, "HLT", 1, 1, AddressingMode::NoneAddressing),
+        Instruction::new(0x22, "HLT", 1, 1, AddressingMode::NoneAddressing),
+        Instruction::new(0x32, "HLT", 1, 1, AddressingMode::NoneAddressing),
+        Instruction::new(0x42, "HLT", 1, 1, AddressingMode::NoneAddressing),
+        Instruction::new(0x52, "HLT", 1, 1, AddressingMode::NoneAddressing),
+        Instruction::new(0x62, "HLT", 1, 1, AddressingMode::NoneAddressing),
+        Instruction::new(0x72, "HLT", 1, 1, AddressingMode::NoneAddressing),
+        Instruction::new(0x92, "HLT", 1, 1, AddressingMode::NoneAddressing),
+        Instruction::new(0xB2, "HLT", 1, 1, AddressingMode::NoneAddressing),
+        Instruction::new(0xD2, "HLT", 1, 1, AddressingMode::NoneAddressing),
+        Instruction::new(0xF2, "HLT", 1, 1, AddressingMode::NoneAddressing),
+
+
         Instruction::new(0x00, "BRK", 1, 7, AddressingMode::NoneAddressing),
         Instruction::new(0xEA, "NOP", 1, 2, AddressingMode::NoneAddressing),
 
         // Load A
         Instruction::new(0xA9, "LDA", 2, 2, AddressingMode::Immediate),
-        Instruction::new(0xA5, "LDA", 2, 2, AddressingMode::ZeroPage),
-        Instruction::new(0xB5, "LDA", 2, 2, AddressingMode::ZeroPageX),
+        Instruction::new(0xA5, "LDA", 2, 3, AddressingMode::ZeroPage),
+        Instruction::new(0xB5, "LDA", 2, 4, AddressingMode::ZeroPageX),
         Instruction::new(0xAD, "LDA", 3, 4, AddressingMode::Absolute),
         Instruction::new(0xBD, "LDA", 3, 4, AddressingMode::AbsoluteX), // +1 if page crossed
         Instruction::new(0xB9, "LDA", 3, 4, AddressingMode::AbsoluteY), // +1 if page crossed
@@ -55,15 +73,15 @@ lazy_static::lazy_static! {
 
         // Load X
         Instruction::new(0xA2, "LDX", 2, 2, AddressingMode::Immediate),
-        Instruction::new(0xA6, "LDX", 2, 2, AddressingMode::ZeroPage),
-        Instruction::new(0xB6, "LDX", 2, 2, AddressingMode::ZeroPageY),
+        Instruction::new(0xA6, "LDX", 2, 3, AddressingMode::ZeroPage),
+        Instruction::new(0xB6, "LDX", 2, 4, AddressingMode::ZeroPageY),
         Instruction::new(0xAE, "LDX", 3, 4, AddressingMode::Absolute),
         Instruction::new(0xBE, "LDX", 3, 4, AddressingMode::AbsoluteY), // +1 if page crossed
 
         // Load Y
         Instruction::new(0xA0, "LDY", 2, 2, AddressingMode::Immediate),
-        Instruction::new(0xA4, "LDY", 2, 2, AddressingMode::ZeroPage),
-        Instruction::new(0xB4, "LDY", 2, 2, AddressingMode::ZeroPageX),
+        Instruction::new(0xA4, "LDY", 2, 3, AddressingMode::ZeroPage),
+        Instruction::new(0xB4, "LDY", 2, 4, AddressingMode::ZeroPageX),
         Instruction::new(0xAC, "LDY", 3, 4, AddressingMode::Absolute),
         Instruction::new(0xBC, "LDY", 3, 4, AddressingMode::AbsoluteX), // +1 if page crossed
 
@@ -71,10 +89,10 @@ lazy_static::lazy_static! {
         Instruction::new(0x85, "STA", 2, 3, AddressingMode::ZeroPage),
         Instruction::new(0x95, "STA", 2, 4, AddressingMode::ZeroPageX),
         Instruction::new(0x8D, "STA", 3, 4, AddressingMode::Absolute),
-        Instruction::new(0x9D, "STA", 3, 5, AddressingMode::AbsoluteX),
-        Instruction::new(0x99, "STA", 3, 5, AddressingMode::AbsoluteY),
+        Instruction::new(0x9D, "STA", 3, 5, AddressingMode::AbsoluteXNoPlus),
+        Instruction::new(0x99, "STA", 3, 5, AddressingMode::AbsoluteYNoPlus),
         Instruction::new(0x81, "STA", 2, 6, AddressingMode::IndirectX),
-        Instruction::new(0x91, "STA", 2, 6, AddressingMode::IndirectY),
+        Instruction::new(0x91, "STA", 2, 6, AddressingMode::IndirectYNoPlus),
 
         // Store X
         Instruction::new(0x86, "STX", 2, 3, AddressingMode::ZeroPage),
@@ -90,7 +108,7 @@ lazy_static::lazy_static! {
         Instruction::new(0xE6, "INC", 2, 5, AddressingMode::ZeroPage),
         Instruction::new(0xF6, "INC", 2, 6, AddressingMode::ZeroPageX),
         Instruction::new(0xEE, "INC", 3, 6, AddressingMode::Absolute),
-        Instruction::new(0xFE, "INC", 3, 7, AddressingMode::AbsoluteX),
+        Instruction::new(0xFE, "INC", 3, 7, AddressingMode::AbsoluteXNoPlus),
         Instruction::new(0xE8, "INX", 1, 2, AddressingMode::NoneAddressing),
         Instruction::new(0xC8, "INY", 1, 2, AddressingMode::NoneAddressing),
 
@@ -98,7 +116,7 @@ lazy_static::lazy_static! {
         Instruction::new(0xC6, "DEC", 2, 5, AddressingMode::ZeroPage),
         Instruction::new(0xD6, "DEC", 2, 6, AddressingMode::ZeroPageX),
         Instruction::new(0xCE, "DEC", 3, 6, AddressingMode::Absolute),
-        Instruction::new(0xDE, "DEC", 3, 7, AddressingMode::AbsoluteX),
+        Instruction::new(0xDE, "DEC", 3, 7, AddressingMode::AbsoluteXNoPlus),
         Instruction::new(0xCA, "DEX", 1, 2, AddressingMode::NoneAddressing),
         Instruction::new(0x88, "DEY", 1, 2, AddressingMode::NoneAddressing),
 
@@ -171,28 +189,28 @@ lazy_static::lazy_static! {
         Instruction::new(0x06, "ASL", 2, 5, AddressingMode::ZeroPage),
         Instruction::new(0x16, "ASL", 2, 6, AddressingMode::ZeroPageX),
         Instruction::new(0x0E, "ASL", 3, 6, AddressingMode::Absolute),
-        Instruction::new(0x1E, "ASL", 3, 7, AddressingMode::AbsoluteX), // +1 if page crossed
+        Instruction::new(0x1E, "ASL", 3, 7, AddressingMode::AbsoluteXNoPlus),
 
         // Logical shift right
         Instruction::new(0x4A, "LSR", 1, 2, AddressingMode::NoneAddressing),
         Instruction::new(0x46, "LSR", 2, 5, AddressingMode::ZeroPage),
         Instruction::new(0x56, "LSR", 2, 6, AddressingMode::ZeroPageX),
         Instruction::new(0x4E, "LSR", 3, 6, AddressingMode::Absolute),
-        Instruction::new(0x5E, "LSR", 3, 7, AddressingMode::AbsoluteX), // +1 if page crossed
+        Instruction::new(0x5E, "LSR", 3, 7, AddressingMode::AbsoluteXNoPlus),
 
         // Rotate left
         Instruction::new(0x2A, "ROL", 1, 2, AddressingMode::NoneAddressing),
         Instruction::new(0x26, "ROL", 2, 5, AddressingMode::ZeroPage),
         Instruction::new(0x36, "ROL", 2, 6, AddressingMode::ZeroPageX),
         Instruction::new(0x2E, "ROL", 3, 6, AddressingMode::Absolute),
-        Instruction::new(0x3E, "ROL", 3, 7, AddressingMode::AbsoluteX), // +1 if page crossed
+        Instruction::new(0x3E, "ROL", 3, 7, AddressingMode::AbsoluteXNoPlus),
 
         // Rotate right
         Instruction::new(0x6A, "ROR", 1, 2, AddressingMode::NoneAddressing),
         Instruction::new(0x66, "ROR", 2, 5, AddressingMode::ZeroPage),
         Instruction::new(0x76, "ROR", 2, 6, AddressingMode::ZeroPageX),
         Instruction::new(0x6E, "ROR", 3, 6, AddressingMode::Absolute),
-        Instruction::new(0x7E, "ROR", 3, 7, AddressingMode::AbsoluteX), // +1 if page crossed
+        Instruction::new(0x7E, "ROR", 3, 7, AddressingMode::AbsoluteXNoPlus),
 
         // Check bits (with logical AND)
         Instruction::new(0x24, "BIT", 2, 3, AddressingMode::ZeroPage),

@@ -71,6 +71,7 @@ impl AudioData {
     }
 }
 // 1789800
+// 1792080 - divisible by 60, 262 (# of scanlines)
 
 fn audio_test() -> Result<(), String> {
     let sdl = sdl2::init().unwrap();
@@ -179,7 +180,7 @@ fn run_rom(file: &str, do_trace: bool, render_debug: bool) {
                     now = SystemTime::now();
                 }
             } else {
-                println!("Arrived late");
+                // println!("Arrived late");
             }
             expected_timestamp += Duration::from_nanos(16666667);
             // println!(
