@@ -72,13 +72,14 @@ impl AudioData {
 }
 // 1789800
 
-fn audio_test() {
+fn audio_test() -> Result<(), String> {
     let sdl = sdl2::init().unwrap();
     let desired_spec = AudioSpecDesired {
         freq: Some(48000),
         channels: Some(1),
         samples: Some(1024),
     };
+    let audio = sdl.audio()?;
 
     let params = InterpolationParameters {
         sinc_len: 256,
@@ -90,6 +91,7 @@ fn audio_test() {
     let mut resampler =
         SincFixedIn::<f32>::new(48000.0 / 1789800.0, 1.0, params, 5 * 1789800, 1).unwrap();
 
+    // Generate some random data and process it
     let mut data = AudioData {
         data: vec![0.0; 5 * 1789800],
         pos: 0,
@@ -98,23 +100,21 @@ fn audio_test() {
     println!("processing data");
     let processed = resampler.process(&[data.data], None).unwrap();
     println!("data processed, len is {}", processed[0].len());
-    let mut new_data = AudioData {
-        data: vec![0.0; processed[0].len()],
+    let new_data = AudioData {
+        data: processed[0].clone(),
         pos: 0,
     };
-    for (idx, value) in processed[0].iter().enumerate() {
-        new_data.data[idx] = *value;
-    }
 
-    let audio = sdl.audio().unwrap();
+    // Play resampled data
     let device = audio
         .open_playback(None, &desired_spec, |spec| {
             println!("{:?}", spec.freq);
             new_data
-        })
-        .unwrap();
+        })?;
     device.resume();
     std::thread::sleep(Duration::from_millis(5000));
+
+    Ok(())
 }
 
 fn run_rom(file: &str, do_trace: bool, render_debug: bool) {
@@ -225,7 +225,7 @@ fn main() {
     let args: Vec<String> = env::args().collect();
 
     if args.contains(&"--test".to_owned()) {
-        audio_test();
+        audio_test().unwrap();
         panic!("Sound test done!");
     }
 
