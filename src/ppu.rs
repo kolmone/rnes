@@ -368,7 +368,7 @@ impl Ppu {
     fn sprite_pixel(&mut self, pixel: u8) -> Option<(bool, u8, u8)> {
         for sprite in self.render_oam.iter().take(self.sp_render_idx) {
             // Check current X position against sprite position
-            let mut offset = (self.x as u8).wrapping_sub(sprite.x_pos);
+            let mut offset = (self.x as u16).wrapping_sub(sprite.x_pos as u16);
             if offset >= 8 {
                 continue;
             }
