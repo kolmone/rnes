@@ -244,7 +244,11 @@ impl<'a> Cpu<'a> {
 
     fn branch_relative(&mut self) {
         let offset = ((self.bus.read(self.program_counter) as i8) as i16) as u16;
+        let old_pc = self.program_counter;
         self.program_counter = self.program_counter.wrapping_add(offset);
+        if old_pc & 0xFF00 != self.program_counter & 0xFF00 {
+            self.bus.tick(1);
+        }
         self.bus.tick(1);
     }
 
@@ -354,7 +358,8 @@ impl<'a> Cpu<'a> {
 
     fn inc(&mut self, mode: &AddressingMode) {
         let addr = self.get_operand_addr(mode);
-        let new_val = self.bus.read(addr).wrapping_add(1);
+        let old_val = self.bus.read(addr);
+        let new_val = old_val.wrapping_add(1);
         self.bus.write(addr, new_val);
         self.update_zero_neg(new_val);
     }
