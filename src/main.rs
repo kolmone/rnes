@@ -23,6 +23,7 @@ use sdl2::{
 use std::{
     collections::HashMap,
     env,
+    f32::consts::PI,
     thread::yield_now,
     time::{Duration, SystemTime},
 };
@@ -64,9 +65,8 @@ impl AudioCallback for AudioData {
 impl AudioData {
     fn fill(&mut self) {
         for (idx, sample) in self.data.iter_mut().enumerate() {
-            let mut new_sample = (idx % 0x2000) as f32;
-            new_sample /= 4096.0;
-            *sample = new_sample - 1.0;
+            let pos = 880.0 * (idx as f32) * 2.0 * PI / 1789800.0;
+            *sample = pos.sin();
         }
     }
 }
@@ -80,6 +80,7 @@ fn audio_test() -> Result<(), String> {
         samples: Some(1024),
     };
     let audio = sdl.audio()?;
+    let len = 1;
 
     let params = InterpolationParameters {
         sinc_len: 256,
@@ -88,31 +89,50 @@ fn audio_test() -> Result<(), String> {
         interpolation: rubato::InterpolationType::Linear,
         window: rubato::WindowFunction::BlackmanHarris2,
     };
+    // let mut resampler =
+    //     SincFixedIn::<f32>::new(48000.0 / 1789800.0, 1.0, params, len * 1789800, 1).unwrap();
     let mut resampler =
-        SincFixedIn::<f32>::new(48000.0 / 1789800.0, 1.0, params, 5 * 1789800, 1).unwrap();
-
+        SincFixedOut::<f32>::new(48000.0 / 1789800.0, 1.0, params, len * 800, 1).unwrap();
+    let mut total_len = 0;
+    for i in 0..60 {
+        let expected_len = resampler.input_frames_next();
+        total_len += expected_len;
+        println!("expected len is {}", expected_len);
+        // Generate some random data and process it
+        let mut data = AudioData {
+            data: vec![0.0; expected_len],
+            pos: 0,
+        };
+        data.fill();
+        let processed = resampler.process(&[data.data], None).unwrap();
+    }
+    println!("total expected len is {}", total_len);
+    panic!("");
+    let expected_len = resampler.input_frames_next();
     // Generate some random data and process it
     let mut data = AudioData {
-        data: vec![0.0; 5 * 1789800],
+        data: vec![0.0; expected_len],
         pos: 0,
     };
     data.fill();
     println!("processing data");
     let processed = resampler.process(&[data.data], None).unwrap();
-    println!("data processed, len is {}", processed[0].len());
+    println!(
+        "next expected next len is {}",
+        resampler.input_frames_next()
+    );
     let new_data = AudioData {
         data: processed[0].clone(),
         pos: 0,
     };
 
     // Play resampled data
-    let device = audio
-        .open_playback(None, &desired_spec, |spec| {
-            println!("{:?}", spec.freq);
-            new_data
-        })?;
+    let device = audio.open_playback(None, &desired_spec, |spec| {
+        println!("{:?}", spec.freq);
+        new_data
+    })?;
     device.resume();
-    std::thread::sleep(Duration::from_millis(5000));
+    std::thread::sleep(Duration::from_millis(1000 * len as u64));
 
     Ok(())
 }
@@ -153,11 +173,15 @@ fn run_rom(file: &str, do_trace: bool, render_debug: bool) {
         Rom::new(rom).unwrap(),
         |ppu: &Ppu, controller: &mut Controller| {
             let mut now = SystemTime::now();
-            while now < expected_timestamp {
-                yield_now();
-                now = SystemTime::now();
+            if now < expected_timestamp {
+                while now < expected_timestamp {
+                    yield_now();
+                    now = SystemTime::now();
+                }
+            } else {
+                println!("Arrived late");
             }
-            expected_timestamp += Duration::from_micros(16667);
+            expected_timestamp += Duration::from_nanos(16666667);
             // println!(
             //     "Current time is {:?}\nNext systemtime is {:?}",
             //     now, expected_timestamp
@@ -170,7 +194,6 @@ fn run_rom(file: &str, do_trace: bool, render_debug: bool) {
                     Event::Quit { .. } => std::process::exit(0),
                     Event::KeyDown { keycode, .. } => {
                         if let Some(key) = keymap.get(&keycode.unwrap_or(Keycode::Ampersand)) {
-                            println!("Button pressed");
                             controller.set_button_state(*key, true);
                         }
                     }

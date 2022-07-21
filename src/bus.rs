@@ -1,6 +1,7 @@
 use std::fmt;
 
 use crate::{
+    apu::Apu,
     controller::{self, Controller},
     ppu::Ppu,
 };
@@ -10,6 +11,7 @@ pub struct Bus<'call> {
     prg_ram: [u8; 0x1000],
     prg: Vec<u8>,
     ppu: Ppu,
+    apu: Apu,
     cycles: usize,
     controller: Controller,
 
@@ -108,6 +110,7 @@ impl<'call> Bus<'call> {
             prg_ram: [0; 0x1000],
             prg: rom.prg,
             ppu: Ppu::new(rom.chr, rom.mirroring),
+            apu: Apu::new(),
             controller: Controller::new(),
             cycles: 0,
             game_callback: Box::from(game_callback),
@@ -121,6 +124,7 @@ impl<'call> Bus<'call> {
                 (self.game_callback)(&self.ppu, &mut self.controller);
             }
         }
+        self.apu.tick();
     }
 
     pub fn get_nmi_state(&mut self) -> bool {
@@ -134,6 +138,7 @@ impl<'call> Bus<'call> {
             ROM_START.. => self.read_prg(addr),
             CONTROLLER1_ADDR => self.controller.read(),
             CONTROLLER2_ADDR => 0,
+            0x4000..=0x4017 => self.apu.read(addr),
             0x6000..=0x7FFF => self.prg_ram[(addr - 0x6000) as usize],
             _ => {
                 println!("Read from unknown address 0x{:X}", addr);
@@ -155,6 +160,7 @@ impl<'call> Bus<'call> {
             OAM_DMA_ADDR => self.oam_dma(data),
             ROM_START.. => println!("Write to ROM space at address 0x{:X}", addr),
             CONTROLLER1_ADDR => self.controller.write(data),
+            0x4000..=0x4017 => self.apu.write(addr, data),
             // _ => (),
             0x6000..=0x7FFF => self.prg_ram[(addr - 0x6000) as usize] = data,
             _ => println!("Write to unknown address 0x{:X}", addr),
@@ -177,7 +183,7 @@ impl<'call> Bus<'call> {
     }
 
     fn oam_dma(&mut self, page: u8) {
-        println!("Performing OAM DMA to address {:x}", self.ppu.oam_addr);
+        // println!("Performing OAM DMA to address {:x}", self.ppu.oam_addr);
         let start_addr = (page as u16) << 8;
         for i in 0..256 {
             let oam_data = self.read(start_addr + i);

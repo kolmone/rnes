@@ -551,7 +551,7 @@ impl<'a> Cpu<'a> {
     }
 
     fn nmi(&mut self) {
-        println!("In NMI");
+        // println!("In NMI");
         self.push_stack_u16(self.program_counter);
         self.push_stack(self.status.0);
         self.status.set_irq_disable(true);
