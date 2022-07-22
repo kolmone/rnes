@@ -52,7 +52,9 @@ impl Rom {
         }
 
         let mapper = (raw[7] & 0b1111_0000) | (raw[6] >> 4);
-        println!("Mapper is {}", mapper);
+        if mapper != 0 {
+            panic!("Mapper is {}", mapper);
+        }
 
         let ines_ver = (raw[7] >> 2) & 0b11;
         if ines_ver != 0 {

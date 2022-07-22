@@ -428,7 +428,7 @@ impl Ppu {
                 }
             }
             REG_DATA => self.data_write(data),
-            _ => panic!("Write to read-only PPU register at 0x{:x}", addr),
+            _ => (),
         }
     }
 

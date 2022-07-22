@@ -13,7 +13,7 @@ use controller::{Button, Controller};
 use cpu::Cpu;
 use ppu::Ppu;
 use renderer::Renderer;
-use rubato::{InterpolationParameters, SincFixedIn, SincFixedOut, VecResampler};
+use rubato::{InterpolationParameters, SincFixedOut, VecResampler};
 use sdl2::{
     audio::{AudioCallback, AudioSpecDesired},
     event::Event,
@@ -27,6 +27,9 @@ use std::{
     thread::yield_now,
     time::{Duration, SystemTime},
 };
+
+const CPU_FREQ: usize = 1786830;
+const CPU_FREQF: f64 = CPU_FREQ as f64;
 
 fn build_keymap() -> HashMap<Keycode, Button> {
     let mut keymap = HashMap::new();
@@ -50,6 +53,7 @@ impl AudioCallback for AudioData {
     type Channel = f32;
 
     fn callback(&mut self, out: &mut [f32]) {
+        println!("Being asked for {} samples", out.len());
         for sample in out.iter_mut() {
             *sample = if self.pos >= self.data.len() {
                 0.0
@@ -70,8 +74,7 @@ impl AudioData {
         }
     }
 }
-// 1789800
-// 1792080 - divisible by 60, 262 (# of scanlines)
+// 21441960 / 12 = 1786830 - if NES ran at exactly 60 Hz
 
 fn audio_test() -> Result<(), String> {
     let sdl = sdl2::init().unwrap();
@@ -90,12 +93,10 @@ fn audio_test() -> Result<(), String> {
         interpolation: rubato::InterpolationType::Linear,
         window: rubato::WindowFunction::BlackmanHarris2,
     };
-    // let mut resampler =
-    //     SincFixedIn::<f32>::new(48000.0 / 1789800.0, 1.0, params, len * 1789800, 1).unwrap();
     let mut resampler =
-        SincFixedOut::<f32>::new(48000.0 / 1789800.0, 1.0, params, len * 800, 1).unwrap();
+        SincFixedOut::<f32>::new(48000.0 / CPU_FREQF, 1.0, params, len * 800, 1).unwrap();
     let mut total_len = 0;
-    for i in 0..60 {
+    for _i in 0..60 {
         let expected_len = resampler.input_frames_next();
         total_len += expected_len;
         println!("expected len is {}", expected_len);
@@ -105,10 +106,10 @@ fn audio_test() -> Result<(), String> {
             pos: 0,
         };
         data.fill();
-        let processed = resampler.process(&[data.data], None).unwrap();
+        resampler.process(&[data.data], None).unwrap();
     }
     println!("total expected len is {}", total_len);
-    panic!("");
+    // panic!("");
     let expected_len = resampler.input_frames_next();
     // Generate some random data and process it
     let mut data = AudioData {
@@ -118,10 +119,6 @@ fn audio_test() -> Result<(), String> {
     data.fill();
     println!("processing data");
     let processed = resampler.process(&[data.data], None).unwrap();
-    println!(
-        "next expected next len is {}",
-        resampler.input_frames_next()
-    );
     let new_data = AudioData {
         data: processed[0].clone(),
         pos: 0,
@@ -143,7 +140,7 @@ fn run_rom(file: &str, do_trace: bool, render_debug: bool) {
     let window = sdl
         .video()
         .unwrap()
-        .window("N3S", 256 * 4, 240 * 4)
+        .window("N3S", 256 * 3, 240 * 3)
         .position_centered()
         .build()
         .unwrap();

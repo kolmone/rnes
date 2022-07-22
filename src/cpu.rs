@@ -309,7 +309,7 @@ impl<'a> Cpu<'a> {
     }
 
     fn brk(&mut self) {
-        self.push_stack_u16(self.program_counter);
+        self.push_stack_u16(self.program_counter.wrapping_add(1));
         self.push_stack(self.status.0 | 0x10);
 
         // let target = if self.bus.get_nmi_state() && !self.nmi_seen {
