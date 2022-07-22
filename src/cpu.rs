@@ -196,9 +196,14 @@ impl<'a> Cpu<'a> {
         }
     }
 
-    fn adc(&mut self, mode: &AddressingMode) {
+    fn adc(&mut self, mode: &AddressingMode, sbc: bool) {
         let addr = self.get_operand_addr(mode);
-        let operand = self.bus.read(addr);
+        let operand = if sbc {
+            !self.bus.read(addr)
+        } else {
+            self.bus.read(addr)
+        };
+
         let carry = if self.status.carry() { 1 } else { 0 };
 
         let orig_a = self.register_a;
@@ -502,32 +507,6 @@ impl<'a> Cpu<'a> {
         self.program_counter = self.pull_stack_u16().wrapping_add(1);
     }
 
-    fn sbc(&mut self, mode: &AddressingMode) {
-        let addr = self.get_operand_addr(mode);
-        let operand = self.bus.read(addr);
-
-        let operand_neg = if self.status.carry() {
-            (!operand).wrapping_add(1)
-        } else {
-            !operand
-        };
-
-        let orig_a = self.register_a;
-        self.register_a = orig_a.wrapping_add(operand_neg);
-
-        // Overflow if both inputs are different sign than result
-        self.status.set_overflow(
-            (orig_a ^ self.register_a) & (operand_neg ^ self.register_a) & SIGN_MASK != 0,
-        );
-
-        // Carry if new value is smaller, or current value is same as original and carry was set
-        self.status.set_carry(
-            self.register_a < orig_a || self.register_a == orig_a && self.status.carry(),
-        );
-
-        self.update_zero_neg(self.register_a);
-    }
-
     fn tax(&mut self) {
         self.register_x = self.register_a;
         self.update_zero_neg(self.register_x);
@@ -578,7 +557,7 @@ impl<'a> Cpu<'a> {
 
     fn isb(&mut self, mode: &AddressingMode) {
         self.inc(mode);
-        self.sbc(mode);
+        self.adc(mode, true);
     }
 
     fn slo(&mut self, mode: &AddressingMode) {
@@ -598,7 +577,7 @@ impl<'a> Cpu<'a> {
 
     fn rra(&mut self, mode: &AddressingMode) {
         self.ror(mode);
-        self.adc(mode);
+        self.adc(mode, false);
     }
 
     // Used for testing
@@ -638,7 +617,7 @@ impl<'a> Cpu<'a> {
             self.program_counter += 1;
 
             match instruction.mnemonic {
-                "ADC" => self.adc(&instruction.addressing_mode),
+                "ADC" => self.adc(&instruction.addressing_mode, false),
                 "AND" => self.and(&instruction.addressing_mode),
                 "ASL" => self.asl(&instruction.addressing_mode),
                 "BCC" => self.bcc(),
@@ -685,7 +664,7 @@ impl<'a> Cpu<'a> {
                 "ROR" => self.ror(&instruction.addressing_mode),
                 "RTI" => self.rti(),
                 "RTS" => self.rts(),
-                "SBC" => self.sbc(&instruction.addressing_mode),
+                "SBC" => self.adc(&instruction.addressing_mode, true),
                 "SEC" => self.status.set_carry(true),
                 "SED" => self.status.set_decimal(true),
                 "SEI" => self.status.set_irq_disable(true),
