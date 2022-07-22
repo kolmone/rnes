@@ -192,7 +192,7 @@ impl<'a> Cpu<'a> {
                 (msb << 8 | lsb).wrapping_add(self.register_y as u16)
             }
 
-            AddressingMode::NoneAddressing => panic!("mode {:?} is not supported", mode),
+            AddressingMode::None => panic!("mode {:?} is not supported", mode),
         }
     }
 
@@ -221,6 +221,11 @@ impl<'a> Cpu<'a> {
         self.update_zero_neg(self.register_a);
     }
 
+    fn anc(&mut self, mode: &AddressingMode) {
+        self.and(mode);
+        self.status.set_carry(self.status.negative());
+    }
+
     fn and(&mut self, mode: &AddressingMode) {
         let addr = self.get_operand_addr(mode);
         self.register_a &= self.bus.read(addr);
@@ -231,7 +236,7 @@ impl<'a> Cpu<'a> {
         // NoneAddressing works directly on accumulator
         // MSB shifts to carry bit
         match mode {
-            &AddressingMode::NoneAddressing => {
+            &AddressingMode::None => {
                 self.status.set_carry(self.register_a & SIGN_MASK != 0);
                 self.register_a <<= 1;
                 self.update_zero_neg(self.register_a);
@@ -382,7 +387,7 @@ impl<'a> Cpu<'a> {
     fn jmp(&mut self, mode: &AddressingMode) {
         self.program_counter = match mode {
             AddressingMode::Absolute => self.bus.read_u16(self.program_counter),
-            AddressingMode::NoneAddressing => {
+            AddressingMode::None => {
                 // 6502 reads MSB of indirect operand from the wrong address.
                 // If operand is 0x30ff, address is read from 0x30ff and 0x3000
                 // instead of 0x30ff and 0x3100
@@ -427,7 +432,7 @@ impl<'a> Cpu<'a> {
         // NoneAddressing works directly on accumulator
         // LSB shifts to carry bit
         match mode {
-            &AddressingMode::NoneAddressing => {
+            &AddressingMode::None => {
                 self.status.set_carry(self.register_a & 0x1 != 0);
                 self.register_a >>= 1;
                 self.update_zero_neg(self.register_a);
@@ -453,7 +458,7 @@ impl<'a> Cpu<'a> {
         // NoneAddressing works directly on accumulator
         // Carry bit shifts to LSB, MSB shifts to carry bit
         match mode {
-            &AddressingMode::NoneAddressing => {
+            &AddressingMode::None => {
                 let carry_in = if self.status.carry() { 0x01 } else { 0x00 };
                 self.status.set_carry(self.register_a & SIGN_MASK != 0);
                 self.register_a <<= 1;
@@ -477,7 +482,7 @@ impl<'a> Cpu<'a> {
         // NoneAddressing works directly on accumulator
         // Carry bit shifts to MSB, LSB shifts to carry bit
         match mode {
-            &AddressingMode::NoneAddressing => {
+            &AddressingMode::None => {
                 let carry_in = if self.status.carry() { 0x80 } else { 0x00 };
                 self.status.set_carry(self.register_a & 0x01 != 0);
                 self.register_a >>= 1;
@@ -601,13 +606,13 @@ impl<'a> Cpu<'a> {
     where
         F: FnMut(&mut Cpu),
     {
+        let mut instructions = instr::INSTRUCTIONS.clone();
+        instructions.sort_unstable_by_key(|k| k.opcode);
+
         loop {
             let op = self.bus.read(self.program_counter);
 
-            let instruction = match instr::INSTRUCTIONS.iter().find(|x| x.opcode == op) {
-                Some(i) => i,
-                None => panic!("Opcode at 0x{:04X} was 0x{:02X}", self.program_counter, op),
-            };
+            let instruction = instructions[op as usize];
 
             self.mnemonic = instruction.mnemonic.to_owned();
             self.cycles = instruction.duration;
@@ -618,6 +623,7 @@ impl<'a> Cpu<'a> {
 
             match instruction.mnemonic {
                 "ADC" => self.adc(&instruction.addressing_mode, false),
+                "ANC" => self.anc(&instruction.addressing_mode),
                 "AND" => self.and(&instruction.addressing_mode),
                 "ASL" => self.asl(&instruction.addressing_mode),
                 "BCC" => self.bcc(),

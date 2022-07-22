@@ -166,12 +166,17 @@ fn run_rom(file: &str, do_trace: bool, render_debug: bool) {
     let keymap = build_keymap();
 
     let mut expected_timestamp = SystemTime::now();
+    let mut prev_timestamp = SystemTime::now();
 
     let bus = Bus::new(
         Rom::new(rom).unwrap(),
         |ppu: &Ppu, controller: &mut Controller| {
             let mut now = SystemTime::now();
             if now < expected_timestamp {
+                println!(
+                    "Frame done in {:?}!",
+                    now.duration_since(prev_timestamp).unwrap()
+                );
                 while now < expected_timestamp {
                     yield_now();
                     now = SystemTime::now();
@@ -179,6 +184,7 @@ fn run_rom(file: &str, do_trace: bool, render_debug: bool) {
             } else {
                 // println!("Arrived late");
             }
+            prev_timestamp = expected_timestamp;
             expected_timestamp += Duration::from_nanos(16666667);
             // println!(
             //     "Current time is {:?}\nNext systemtime is {:?}",
