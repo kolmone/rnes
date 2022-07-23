@@ -10,4 +10,7 @@ lazy_static = "1.4.0"
 sdl2 = "0.35.2"
 rand = "0.8.5"
 bitbash = "0.5.1"
+# rubato = {version = "0.12.0", features = ["log"]}
 rubato = "0.12.0"
+log = "0.4.17"
+env_logger = "0.9.0"

@@ -13,7 +13,7 @@ use controller::{Button, Controller};
 use cpu::Cpu;
 use ppu::Ppu;
 use renderer::Renderer;
-use rubato::{InterpolationParameters, SincFixedOut, VecResampler};
+use rubato::{FftFixedOut, VecResampler};
 use sdl2::{
     audio::{AudioCallback, AudioSpecDesired},
     event::Event,
@@ -28,7 +28,11 @@ use std::{
     time::{Duration, SystemTime},
 };
 
-const CPU_FREQ: usize = 1786830;
+// 21441960 / 12 = 1786830 - if NES ran at exactly 60 Hz
+const MAIN_FREQ: usize = 21441960;
+const CPU_FREQ: usize = MAIN_FREQ / 12;
+const APU_FREQ: usize = CPU_FREQ;
+const PPU_FREQ: usize = MAIN_FREQ / 4;
 const CPU_FREQF: f64 = CPU_FREQ as f64;
 
 fn build_keymap() -> HashMap<Keycode, Button> {
@@ -44,93 +48,64 @@ fn build_keymap() -> HashMap<Keycode, Button> {
     keymap
 }
 
-struct AudioData {
-    data: Vec<f32>,
-    pos: usize,
+struct AudioHandler {
+    input_data: Vec<Vec<f32>>,
+    output_data: Vec<Vec<f32>>,
+    resampler: FftFixedOut<f32>,
 }
 
-impl AudioCallback for AudioData {
+impl AudioCallback for AudioHandler {
     type Channel = f32;
 
     fn callback(&mut self, out: &mut [f32]) {
-        println!("Being asked for {} samples", out.len());
-        for sample in out.iter_mut() {
-            *sample = if self.pos >= self.data.len() {
-                0.0
-            } else {
-                let new = self.data[self.pos];
-                self.pos += 1;
-                new
-            }
+        println!("{}", self.resampler.input_frames_next());
+        match self.resampler.process_into_buffer(
+            &self.input_data,
+            &mut self.output_data,
+            Some(&[true; 1]),
+        ) {
+            Ok(()) => out.clone_from_slice(&self.output_data[0]),
+            Err(error) => panic!("{:?}", error),
         }
     }
 }
 
-impl AudioData {
-    fn fill(&mut self) {
-        for (idx, sample) in self.data.iter_mut().enumerate() {
-            let pos = 880.0 * (idx as f32) * 2.0 * PI / 1789800.0;
-            *sample = pos.sin();
+impl AudioHandler {
+    fn new(out_freq: usize, buffer_len: usize) -> Self {
+        let resampler = FftFixedOut::<f32>::new(APU_FREQ, out_freq, buffer_len, 4, 1).unwrap();
+        AudioHandler {
+            input_data: vec![vec![0.0; 0]; 1],
+            output_data: vec![vec![0.0; buffer_len]; 1],
+            resampler,
         }
     }
+
+    // fn fill(&mut self) {
+    //     for (idx, sample) in self.data.iter_mut().enumerate() {
+    //         let pos = 880.0 * (idx as f32) * 2.0 * PI / 1789800.0;
+    //         *sample = pos.sin();
+    //     }
+    // }
 }
-// 21441960 / 12 = 1786830 - if NES ran at exactly 60 Hz
 
 fn audio_test() -> Result<(), String> {
+    let freq = 48000;
+    let buffer_len = 1024;
+
     let sdl = sdl2::init().unwrap();
     let desired_spec = AudioSpecDesired {
-        freq: Some(48000),
+        freq: Some(freq),
         channels: Some(1),
-        samples: Some(1024),
+        samples: Some(buffer_len),
     };
     let audio = sdl.audio()?;
-    let len = 1;
 
-    let params = InterpolationParameters {
-        sinc_len: 256,
-        f_cutoff: 0.95,
-        oversampling_factor: 128,
-        interpolation: rubato::InterpolationType::Linear,
-        window: rubato::WindowFunction::BlackmanHarris2,
-    };
-    let mut resampler =
-        SincFixedOut::<f32>::new(48000.0 / CPU_FREQF, 1.0, params, len * 800, 1).unwrap();
-    let mut total_len = 0;
-    for _i in 0..60 {
-        let expected_len = resampler.input_frames_next();
-        total_len += expected_len;
-        println!("expected len is {}", expected_len);
-        // Generate some random data and process it
-        let mut data = AudioData {
-            data: vec![0.0; expected_len],
-            pos: 0,
-        };
-        data.fill();
-        resampler.process(&[data.data], None).unwrap();
-    }
-    println!("total expected len is {}", total_len);
-    // panic!("");
-    let expected_len = resampler.input_frames_next();
-    // Generate some random data and process it
-    let mut data = AudioData {
-        data: vec![0.0; expected_len],
-        pos: 0,
-    };
-    data.fill();
-    println!("processing data");
-    let processed = resampler.process(&[data.data], None).unwrap();
-    let new_data = AudioData {
-        data: processed[0].clone(),
-        pos: 0,
-    };
+    let audio_handler = AudioHandler::new(freq as usize, buffer_len as usize);
 
     // Play resampled data
-    let device = audio.open_playback(None, &desired_spec, |spec| {
-        println!("{:?}", spec.freq);
-        new_data
-    })?;
+    let device = audio.open_playback(None, &desired_spec, |_| audio_handler)?;
     device.resume();
-    std::thread::sleep(Duration::from_millis(1000 * len as u64));
+    std::thread::sleep(Duration::from_secs(5));
 
     Ok(())
 }
@@ -249,6 +224,7 @@ fn trace(cpu: &mut Cpu) {
 }
 
 fn main() {
+    env_logger::init();
     let args: Vec<String> = env::args().collect();
 
     if args.contains(&"--test".to_owned()) {
