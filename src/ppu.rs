@@ -141,6 +141,8 @@ impl Ppu {
                 }
                 Ppu::VBLANK_START_LINE => {
                     self.status.set_vblank(true);
+                    // println!("frame done after {} cycles", self.cycle);
+                    self.cycle = 0;
                     return true;
                 }
                 _ => (),

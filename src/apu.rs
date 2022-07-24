@@ -24,7 +24,7 @@ impl Apu {
             pulse2: Pulse::new(),
             triangle: Triangle {},
             noise: Noise {},
-            output: vec![0.0; 59561],
+            output: vec![0.0; 10000],
             output_idx: 0,
             tx,
         }
@@ -68,10 +68,10 @@ impl Apu {
         let tnd_out = 0.00851 * tri_out + 0.00494 * noise_out + 0.00335 * dmc_out;
         let pulse_out = 0.00752 * (pulse1_out + pulse2_out);
         let output = pulse_out + tnd_out - 0.44232;
-        // println!("Output is {}", output);
         self.output[self.output_idx] = output;
         self.output_idx += 1;
         if self.output_idx >= self.output.len() {
+            // println!("Pushing {} samples", self.output.len());
             match self.tx.send(self.output.clone()) {
                 Ok(()) => (),
                 Err(e) => panic!("Send error: {}", e),

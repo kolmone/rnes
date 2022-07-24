@@ -13,7 +13,10 @@ use controller::{Button, Controller};
 use cpu::Cpu;
 use ppu::Ppu;
 use renderer::Renderer;
-use rubato::{FftFixedOut, VecResampler};
+use rubato::{
+    FftFixedOut, InterpolationParameters, InterpolationType, SincFixedOut, VecResampler,
+    WindowFunction,
+};
 use sdl2::{
     audio::{AudioCallback, AudioSpecDesired},
     event::Event,
@@ -29,7 +32,8 @@ use std::{
 };
 
 // 21441960 / 12 = 1786830 - if NES ran at exactly 60 Hz
-const MAIN_FREQ: usize = 21441960;
+// const MAIN_FREQ: usize = 21441960;
+const MAIN_FREQ: usize = 21442080; // 89342 PPU cycles * 60 * 4
 const CPU_FREQ: usize = MAIN_FREQ / 12;
 const APU_FREQ: usize = CPU_FREQ;
 const PPU_FREQ: usize = MAIN_FREQ / 4;
@@ -49,9 +53,9 @@ fn build_keymap() -> HashMap<Keycode, Button> {
 }
 
 struct AudioHandler {
-    input_data: Vec<Vec<f32>>,
+    input_buffer: Vec<f32>,
     output_data: Vec<Vec<f32>>,
-    resampler: FftFixedOut<f32>,
+    resampler: SincFixedOut<f32>,
     rx: Receiver<Vec<f32>>,
 }
 
@@ -59,42 +63,59 @@ impl AudioCallback for AudioHandler {
     type Channel = f32;
 
     fn callback(&mut self, out: &mut [f32]) {
-        if self.resampler.input_frames_next() > 0 {
-            match self.rx.recv() {
-                Ok(vec) => self.input_data[0] = vec,
-                Err(e) => panic!("Receive error: {}", e),
+        // let start = SystemTime::now();
+        let samples = self.resampler.input_frames_next();
+        while samples > self.input_buffer.len() {
+            match self.rx.try_recv() {
+                Ok(mut vec) => {
+                    self.input_buffer.append(&mut vec);
+                }
+                Err(e) => {
+                    self.input_buffer.resize(samples, 0.0);
+                }
             }
-        } else {
-            self.input_data[0] = Vec::new();
         }
+        let input_data = vec![self.input_buffer[0..samples].to_vec(); 1];
+
         match self.resampler.process_into_buffer(
-            &self.input_data,
+            &input_data,
             &mut self.output_data,
             Some(&[true; 1]),
         ) {
             Ok(()) => out.clone_from_slice(&self.output_data[0]),
             Err(e) => panic!("Resampling error {}", e),
         }
+
+        self.input_buffer.drain(0..samples);
+        // let end = SystemTime::now();
+        // println!(
+        //     "Audio processed in {:?}!",
+        //     end.duration_since(start).unwrap()
+        // );
     }
 }
 
 impl AudioHandler {
     fn new(out_freq: usize, buffer_len: usize) -> (Self, Sender<Vec<f32>>) {
-        let resampler = FftFixedOut::<f32>::new(APU_FREQ, out_freq, buffer_len, 4, 1).unwrap();
+        let params = InterpolationParameters {
+            sinc_len: 256,
+            f_cutoff: 0.95,
+            interpolation: InterpolationType::Linear,
+            oversampling_factor: 256,
+            window: WindowFunction::BlackmanHarris2,
+        };
+        let resampler =
+            SincFixedOut::new(out_freq as f64 / CPU_FREQF, 1.0, params, buffer_len, 1).unwrap();
         let (tx, rx) = mpsc::channel::<Vec<f32>>();
         (
             AudioHandler {
-                input_data: vec![vec![0.0; 0]; 1],
+                input_buffer: Vec::new(),
                 output_data: vec![vec![0.0; buffer_len]; 1],
                 resampler,
                 rx,
             },
             tx,
         )
-    }
-
-    fn input_len(&self) -> usize {
-        self.resampler.input_frames_max()
     }
 }
 
@@ -148,10 +169,10 @@ fn run_rom(file: &str, do_trace: bool, render_debug: bool) {
         |ppu: &Ppu, controller: &mut Controller| {
             let mut now = SystemTime::now();
             if now < expected_timestamp {
-                println!(
-                    "Frame done in {:?}!",
-                    now.duration_since(prev_timestamp).unwrap()
-                );
+                // println!(
+                //     "Frame done in {:?}!",
+                //     now.duration_since(prev_timestamp).unwrap()
+                // );
                 while now < expected_timestamp {
                     yield_now();
                     now = SystemTime::now();
@@ -186,7 +207,7 @@ fn run_rom(file: &str, do_trace: bool, render_debug: bool) {
     cpu.reset();
 
     let device = audio
-        .open_playback(None, &audio_spec, |_| audio_handler)
+        .open_playback(None, &audio_spec, |_spec| audio_handler)
         .unwrap();
     device.resume();
 

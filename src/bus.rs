@@ -126,7 +126,9 @@ impl<'call> Bus<'call> {
                 (self.game_callback)(&self.ppu, &mut self.controller);
             }
         }
-        self.apu.tick();
+        for _ in 0..cycles {
+            self.apu.tick();
+        }
     }
 
     pub fn get_nmi_state(&mut self) -> bool {
