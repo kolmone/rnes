@@ -80,8 +80,13 @@ impl AudioCallback for AudioHandler {
                     self.input_buffer.append(&mut vec);
                 }
                 Err(_) => {
-                    // println!("No new audio available");
-                    self.input_buffer.resize(samples, 0.0);
+                    println!("No new audio available, adding empty");
+                    let fill = match self.input_buffer.last() {
+                        Some(val) => *val,
+                        None => 0.0,
+                    };
+                    let mut empty = vec![fill; 10000];
+                    self.input_buffer.append(&mut empty);
                 }
             }
         }
