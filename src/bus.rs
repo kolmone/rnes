@@ -171,13 +171,6 @@ impl<'call> Bus<'call> {
         }
     }
 
-    pub fn write_u16(&mut self, addr: u16, data: u16) {
-        let msb = (data >> 8) as u8;
-        let lsb = (data & 0xff) as u8;
-        self.write(addr, lsb);
-        self.write(addr.wrapping_add(1), msb);
-    }
-
     fn read_prg(&self, mut addr: u16) -> u8 {
         addr -= ROM_START;
         if self.prg.len() == 0x4000 {
@@ -198,7 +191,7 @@ impl<'call> Bus<'call> {
     }
 }
 
-mod cartridge {
+mod _cartridge {
     pub struct Cartridge {
         prg_rom: Vec<u8>,
         prg_ram: Vec<u8>,

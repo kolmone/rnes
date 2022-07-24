@@ -11,6 +11,11 @@ pub struct Apu {
     output: Vec<f32>,
     output_idx: usize,
     tx: Sender<Vec<f32>>,
+
+    cycle: usize,
+
+    framec_cycle: usize,
+    framec_mode: bool,
 }
 
 struct Triangle {}
@@ -27,6 +32,9 @@ impl Apu {
             output: vec![0.0; 10000],
             output_idx: 0,
             tx,
+            cycle: 0,
+            framec_cycle: 0,
+            framec_mode: false,
         }
     }
 
@@ -60,6 +68,10 @@ impl Apu {
     }
 
     pub fn tick(&mut self) {
+        self.cycle += 1;
+
+        self.tick_frame_counter();
+
         let pulse1_out = self.pulse1.tick() as f32;
         let pulse2_out = self.pulse2.tick() as f32;
         let tri_out = 8.0;
@@ -79,6 +91,38 @@ impl Apu {
             self.output_idx = 0;
         }
     }
+
+    fn tick_frame_counter(&mut self) {
+        if self.cycle % 2 == 0 {
+            match self.framec_cycle {
+                3728 | 11185 => self.tick_quarter_frame(),
+                7456 => {
+                    self.tick_quarter_frame();
+                    self.tick_half_frame();
+                }
+                14914 if !self.framec_mode => {
+                    self.tick_quarter_frame();
+                    self.tick_half_frame();
+                }
+                18640 if self.framec_mode => {
+                    self.tick_quarter_frame();
+                    self.tick_half_frame();
+                }
+                _ => (),
+            }
+        } else {
+            self.framec_cycle += 1;
+            if self.framec_mode && self.framec_cycle == 18641
+                || !self.framec_mode && self.framec_cycle == 14915
+            {
+                self.framec_cycle = 0;
+            }
+        }
+    }
+
+    fn tick_quarter_frame(&mut self) {}
+
+    fn tick_half_frame(&mut self) {}
 }
 
 bitfield! {

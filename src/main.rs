@@ -13,10 +13,7 @@ use controller::{Button, Controller};
 use cpu::Cpu;
 use ppu::Ppu;
 use renderer::Renderer;
-use rubato::{
-    FftFixedOut, InterpolationParameters, InterpolationType, SincFixedOut, VecResampler,
-    WindowFunction,
-};
+use rubato::{FftFixedOut, VecResampler};
 use sdl2::{
     audio::{AudioCallback, AudioSpecDesired},
     event::Event,
@@ -36,8 +33,7 @@ use std::{
 const MAIN_FREQ: usize = 21442080; // 89342 PPU cycles * 60 * 4
 const CPU_FREQ: usize = MAIN_FREQ / 12;
 const APU_FREQ: usize = CPU_FREQ;
-const PPU_FREQ: usize = MAIN_FREQ / 4;
-const CPU_FREQF: f64 = CPU_FREQ as f64;
+const _PPU_FREQ: usize = MAIN_FREQ / 4;
 
 fn build_keymap() -> HashMap<Keycode, Button> {
     let mut keymap = HashMap::new();
@@ -55,8 +51,11 @@ fn build_keymap() -> HashMap<Keycode, Button> {
 struct AudioHandler {
     input_buffer: Vec<f32>,
     output_data: Vec<Vec<f32>>,
-    resampler: SincFixedOut<f32>,
+    // resampler: SincFixedOut<f32>,
+    resampler: FftFixedOut<f32>,
     rx: Receiver<Vec<f32>>,
+    samples_processed: usize,
+    samples_received: usize,
 }
 
 impl AudioCallback for AudioHandler {
@@ -65,12 +64,23 @@ impl AudioCallback for AudioHandler {
     fn callback(&mut self, out: &mut [f32]) {
         // let start = SystemTime::now();
         let samples = self.resampler.input_frames_next();
+        // println!(
+        //     "Processing {} samples, {} samples in buffer",
+        //     samples,
+        //     self.input_buffer.len()
+        // );
         while samples > self.input_buffer.len() {
             match self.rx.try_recv() {
                 Ok(mut vec) => {
+                    if self.samples_received == 0 {
+                        // println!("Got first samples");
+                        self.samples_processed = 0;
+                    }
+                    self.samples_received += vec.len();
                     self.input_buffer.append(&mut vec);
                 }
-                Err(e) => {
+                Err(_) => {
+                    // println!("No new audio available");
                     self.input_buffer.resize(samples, 0.0);
                 }
             }
@@ -87,32 +97,26 @@ impl AudioCallback for AudioHandler {
         }
 
         self.input_buffer.drain(0..samples);
-        // let end = SystemTime::now();
+        self.samples_processed += samples;
         // println!(
-        //     "Audio processed in {:?}!",
-        //     end.duration_since(start).unwrap()
+        //     "Samples processed - received = {}",
+        //     self.samples_processed - self.samples_received
         // );
     }
 }
 
 impl AudioHandler {
     fn new(out_freq: usize, buffer_len: usize) -> (Self, Sender<Vec<f32>>) {
-        let params = InterpolationParameters {
-            sinc_len: 256,
-            f_cutoff: 0.95,
-            interpolation: InterpolationType::Linear,
-            oversampling_factor: 256,
-            window: WindowFunction::BlackmanHarris2,
-        };
-        let resampler =
-            SincFixedOut::new(out_freq as f64 / CPU_FREQF, 1.0, params, buffer_len, 1).unwrap();
+        let fft_resampler = FftFixedOut::new(APU_FREQ, out_freq, buffer_len, 1, 1).unwrap();
         let (tx, rx) = mpsc::channel::<Vec<f32>>();
         (
             AudioHandler {
                 input_buffer: Vec::new(),
                 output_data: vec![vec![0.0; buffer_len]; 1],
-                resampler,
+                resampler: fft_resampler,
                 rx,
+                samples_processed: 0,
+                samples_received: 0,
             },
             tx,
         )
