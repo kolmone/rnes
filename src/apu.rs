@@ -1,3 +1,5 @@
+use std::sync::mpsc::Sender;
+
 use bitbash::bitfield;
 
 pub struct Apu {
@@ -6,8 +8,9 @@ pub struct Apu {
     triangle: Triangle,
     noise: Noise,
 
-    pub output: Vec<f32>,
+    output: Vec<f32>,
     output_idx: usize,
+    tx: Sender<Vec<f32>>,
 }
 
 struct Triangle {}
@@ -15,19 +18,20 @@ struct Triangle {}
 struct Noise {}
 
 impl Apu {
-    pub fn new() -> Self {
+    pub fn new(tx: Sender<Vec<f32>>) -> Self {
         Apu {
             pulse1: Pulse::new(),
             pulse2: Pulse::new(),
             triangle: Triangle {},
             noise: Noise {},
-            output: vec![0.0; 1789800 / 60],
+            output: vec![0.0; 59561],
             output_idx: 0,
+            tx,
         }
     }
 
     pub fn write(&mut self, addr: u16, data: u8) {
-        let addr = addr & 0x17;
+        // println!("Writing {:2X} to {:4X}", data, addr);
         match addr {
             0x4000 => self.pulse1.r0 = data,
             0x4001 => self.pulse1.r1 = data,
@@ -35,6 +39,13 @@ impl Apu {
             0x4003 => {
                 self.pulse1.r3 = data;
                 self.pulse1.sequencer = 0;
+            }
+            0x4004 => self.pulse2.r0 = data,
+            0x4005 => self.pulse2.r1 = data,
+            0x4006 => self.pulse2.r2 = data,
+            0x4007 => {
+                self.pulse2.r3 = data;
+                self.pulse2.sequencer = 0;
             }
             _ => (),
         }
@@ -49,8 +60,24 @@ impl Apu {
     }
 
     pub fn tick(&mut self) {
-        self.output[self.output_idx] = (self.pulse1.tick() as f32) / 120.0 - 1.0;
-        self.output_idx = (self.output_idx + 1) % self.output.len();
+        let pulse1_out = self.pulse1.tick() as f32;
+        let pulse2_out = self.pulse2.tick() as f32;
+        let tri_out = 8.0;
+        let noise_out = 8.0;
+        let dmc_out = 64.0;
+        let tnd_out = 0.00851 * tri_out + 0.00494 * noise_out + 0.00335 * dmc_out;
+        let pulse_out = 0.00752 * (pulse1_out + pulse2_out);
+        let output = pulse_out + tnd_out - 0.44232;
+        // println!("Output is {}", output);
+        self.output[self.output_idx] = output;
+        self.output_idx += 1;
+        if self.output_idx >= self.output.len() {
+            match self.tx.send(self.output.clone()) {
+                Ok(()) => (),
+                Err(e) => panic!("Send error: {}", e),
+            }
+            self.output_idx = 0;
+        }
     }
 }
 
@@ -85,15 +112,15 @@ bitfield! {
 
 impl Pulse {
     const DUTY_TABLES: [[u8; 8]; 4] = [
-        [0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x10],
-        [0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x10, 0x10],
-        [0x00, 0x00, 0x00, 0x00, 0x10, 0x10, 0x10, 0x10],
-        [0x10, 0x10, 0x10, 0x10, 0x10, 0x10, 0x00, 0x00],
+        [0, 0, 0, 0, 0, 0, 0, 1],
+        [0, 0, 0, 0, 0, 0, 1, 1],
+        [0, 0, 0, 0, 1, 1, 1, 1],
+        [1, 1, 1, 1, 1, 1, 0, 0],
     ];
 
     pub fn tick(&mut self) -> u8 {
         if self.timer() < 8 {
-            return 0;
+            return 8;
         }
 
         if self.timer == 0 {

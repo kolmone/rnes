@@ -23,7 +23,7 @@ use sdl2::{
 use std::{
     collections::HashMap,
     env,
-    f32::consts::PI,
+    sync::mpsc::{self, Receiver, Sender},
     thread::yield_now,
     time::{Duration, SystemTime},
 };
@@ -52,62 +52,50 @@ struct AudioHandler {
     input_data: Vec<Vec<f32>>,
     output_data: Vec<Vec<f32>>,
     resampler: FftFixedOut<f32>,
+    rx: Receiver<Vec<f32>>,
 }
 
 impl AudioCallback for AudioHandler {
     type Channel = f32;
 
     fn callback(&mut self, out: &mut [f32]) {
-        println!("{}", self.resampler.input_frames_next());
+        if self.resampler.input_frames_next() > 0 {
+            match self.rx.recv() {
+                Ok(vec) => self.input_data[0] = vec,
+                Err(e) => panic!("Receive error: {}", e),
+            }
+        } else {
+            self.input_data[0] = Vec::new();
+        }
         match self.resampler.process_into_buffer(
             &self.input_data,
             &mut self.output_data,
             Some(&[true; 1]),
         ) {
             Ok(()) => out.clone_from_slice(&self.output_data[0]),
-            Err(error) => panic!("{:?}", error),
+            Err(e) => panic!("Resampling error {}", e),
         }
     }
 }
 
 impl AudioHandler {
-    fn new(out_freq: usize, buffer_len: usize) -> Self {
+    fn new(out_freq: usize, buffer_len: usize) -> (Self, Sender<Vec<f32>>) {
         let resampler = FftFixedOut::<f32>::new(APU_FREQ, out_freq, buffer_len, 4, 1).unwrap();
-        AudioHandler {
-            input_data: vec![vec![0.0; 0]; 1],
-            output_data: vec![vec![0.0; buffer_len]; 1],
-            resampler,
-        }
+        let (tx, rx) = mpsc::channel::<Vec<f32>>();
+        (
+            AudioHandler {
+                input_data: vec![vec![0.0; 0]; 1],
+                output_data: vec![vec![0.0; buffer_len]; 1],
+                resampler,
+                rx,
+            },
+            tx,
+        )
     }
 
-    // fn fill(&mut self) {
-    //     for (idx, sample) in self.data.iter_mut().enumerate() {
-    //         let pos = 880.0 * (idx as f32) * 2.0 * PI / 1789800.0;
-    //         *sample = pos.sin();
-    //     }
-    // }
-}
-
-fn audio_test() -> Result<(), String> {
-    let freq = 48000;
-    let buffer_len = 1024;
-
-    let sdl = sdl2::init().unwrap();
-    let desired_spec = AudioSpecDesired {
-        freq: Some(freq),
-        channels: Some(1),
-        samples: Some(buffer_len),
-    };
-    let audio = sdl.audio()?;
-
-    let audio_handler = AudioHandler::new(freq as usize, buffer_len as usize);
-
-    // Play resampled data
-    let device = audio.open_playback(None, &desired_spec, |_| audio_handler)?;
-    device.resume();
-    std::thread::sleep(Duration::from_secs(5));
-
-    Ok(())
+    fn input_len(&self) -> usize {
+        self.resampler.input_frames_max()
+    }
 }
 
 fn run_rom(file: &str, do_trace: bool, render_debug: bool) {
@@ -119,6 +107,17 @@ fn run_rom(file: &str, do_trace: bool, render_debug: bool) {
         .position_centered()
         .build()
         .unwrap();
+
+    let audio_spec = AudioSpecDesired {
+        freq: Some(48000),
+        channels: Some(1),
+        samples: Some(1024),
+    };
+    let audio = sdl.audio().unwrap();
+    let (audio_handler, tx) = AudioHandler::new(
+        audio_spec.freq.unwrap() as usize,
+        audio_spec.samples.unwrap() as usize,
+    );
 
     let mut canvas = window.into_canvas().present_vsync().build().unwrap();
 
@@ -145,6 +144,7 @@ fn run_rom(file: &str, do_trace: bool, render_debug: bool) {
 
     let bus = Bus::new(
         Rom::new(rom).unwrap(),
+        tx,
         |ppu: &Ppu, controller: &mut Controller| {
             let mut now = SystemTime::now();
             if now < expected_timestamp {
@@ -157,15 +157,10 @@ fn run_rom(file: &str, do_trace: bool, render_debug: bool) {
                     now = SystemTime::now();
                 }
             } else {
-                // println!("Arrived late");
+                println!("Arrived late");
             }
             prev_timestamp = expected_timestamp;
             expected_timestamp += Duration::from_nanos(16666667);
-            // println!(
-            //     "Current time is {:?}\nNext systemtime is {:?}",
-            //     now, expected_timestamp
-            // );
-
             renderer.render_screen(ppu, &mut canvas, &mut texture, render_debug);
 
             for event in event_pump.poll_iter() {
@@ -189,6 +184,11 @@ fn run_rom(file: &str, do_trace: bool, render_debug: bool) {
     let mut cpu = Cpu::new(bus);
 
     cpu.reset();
+
+    let device = audio
+        .open_playback(None, &audio_spec, |_| audio_handler)
+        .unwrap();
+    device.resume();
 
     cpu.run_with_callback(move |cpu| {
         if do_trace {
@@ -226,11 +226,6 @@ fn trace(cpu: &mut Cpu) {
 fn main() {
     env_logger::init();
     let args: Vec<String> = env::args().collect();
-
-    if args.contains(&"--test".to_owned()) {
-        audio_test().unwrap();
-        panic!("Sound test done!");
-    }
 
     if args.len() < 2 {
         println!("Must provide at least one parameter!");

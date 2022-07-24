@@ -1,4 +1,4 @@
-use std::fmt;
+use std::{fmt, sync::mpsc::Sender};
 
 use crate::{
     apu::Apu,
@@ -103,7 +103,7 @@ const CONTROLLER2_ADDR: u16 = 0x4017;
 const RAM_ADDR_MIRROR_MASK: u16 = 0x07FF;
 
 impl<'call> Bus<'call> {
-    pub fn new<F>(rom: Rom, game_callback: F) -> Self
+    pub fn new<F>(rom: Rom, apu_tx: Sender<Vec<f32>>, game_callback: F) -> Self
     where
         F: FnMut(&Ppu, &mut controller::Controller) + 'call,
     {
@@ -112,7 +112,7 @@ impl<'call> Bus<'call> {
             prg_ram: [0; 0x1000],
             prg: rom.prg,
             ppu: Ppu::new(rom.chr, rom.mirroring),
-            apu: Apu::new(),
+            apu: Apu::new(apu_tx),
             controller: Controller::new(),
             cycles: 0,
             game_callback: Box::from(game_callback),
