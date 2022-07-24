@@ -103,9 +103,6 @@ impl Apu {
         self.output[self.output_idx] = output;
         self.output_idx += 1;
         if self.output_idx >= self.output.len() {
-            let max = self.output.iter().max_by(|a, b| a.total_cmp(b)).unwrap();
-            let min = self.output.iter().min_by(|a, b| a.total_cmp(b)).unwrap();
-            println!("{}, {}", min, max);
             match self.tx.send(self.output.clone()) {
                 Ok(()) => (),
                 Err(e) => panic!("Send error: {}", e),
