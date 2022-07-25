@@ -1,5 +1,7 @@
 use bitbash::bitfield;
 
+use super::common::{Envelope, LengthCounter};
+
 bitfield! {
     #[derive(Default)]
     pub struct Noise{
@@ -7,13 +9,11 @@ bitfield! {
         r2: u8,
         r3: u8,
         timer: u16,
-        length_counter: u8,
         enable: bool,
-        length_counter_zero: bool,
-        envelope_counter: u8,
-        envelope_divider: u8,
-        reset_envelope: bool,
         shift_register: u16,
+
+        lc: LengthCounter,
+        env: Envelope,
     }
 
     pub field volume: u8 = r0[0..4];
@@ -61,10 +61,10 @@ impl Noise {
         let volume = if self.const_vol() {
             self.volume()
         } else {
-            self.envelope_counter
+            self.env.value
         };
 
-        if self.shift_register & 0x1 == 0 && !self.length_counter_zero {
+        if self.shift_register & 0x1 == 0 && !self.lc.muting {
             volume
         } else {
             0
@@ -73,43 +73,25 @@ impl Noise {
 
     pub fn tick_half_frame(&mut self) {
         if !self.counter_halt() {
-            if self.length_counter > 0 {
-                self.length_counter -= 1;
-            }
-            if self.length_counter == 0 {
-                self.length_counter_zero = true;
-            } else {
-                self.length_counter_zero = false;
-            }
+            self.lc.tick();
         }
     }
 
     pub fn tick_quarter_frame(&mut self) {
-        if self.reset_envelope {
-            self.envelope_divider = self.envelope();
-            self.envelope_counter = 15;
-            self.reset_envelope = false;
-        } else if self.envelope_divider == 0 {
-            self.envelope_divider = self.envelope();
-            if self.env_loop() && self.envelope_counter == 0 {
-                self.envelope_counter = 15;
-            } else if self.envelope_counter > 0 {
-                self.envelope_counter -= 1;
-            }
-        } else {
-            self.envelope_divider -= 1;
-        }
+        self.env.tick();
     }
 
     pub fn set_enable(&mut self, enable: bool) {
         self.enable = enable;
         if !enable {
-            self.length_counter = 0;
+            self.lc.counter = 0;
         }
     }
 
     pub fn write_r0(&mut self, data: u8) {
         self.r0 = data;
+        self.env.divider_start = self.envelope();
+        self.env.looping = self.env_loop();
     }
 
     pub fn write_r2(&mut self, data: u8) {
@@ -120,8 +102,8 @@ impl Noise {
     pub fn write_r3(&mut self, data: u8) {
         self.r3 = data;
         if self.enable {
-            self.length_counter = super::LENGTH_VALUES[self.counter_load() as usize];
+            self.lc.counter = super::LENGTH_VALUES[self.counter_load() as usize];
         };
-        self.reset_envelope = true;
+        self.env.reset = true;
     }
 }

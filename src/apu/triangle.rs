@@ -1,5 +1,4 @@
-
-
+use super::common::LengthCounter;
 use bitbash::bitfield;
 
 bitfield! {
@@ -11,13 +10,13 @@ bitfield! {
 
         timer: u16,
 
-        length_counter: u8,
         enable: bool,
-        length_counter_zero: bool,
+
+        lc: LengthCounter,
 
         wave_ptr: usize,
         linear_counter: u8,
-        reload_lc: bool,
+        reload_linear: bool,
     }
 
     pub field linear_counter: u8 = r0[0..7];
@@ -43,7 +42,7 @@ impl Triangle {
     }
 
     pub fn tick(&mut self) -> u8 {
-        if !self.enable || self.length_counter_zero || self.linear_counter == 0 {
+        if !self.enable || self.lc.muting || self.linear_counter == 0 {
             return Triangle::WAVE[self.wave_ptr];
         } else if self.timer == 0 {
             self.timer = self.timer();
@@ -60,19 +59,12 @@ impl Triangle {
 
     pub fn tick_half_frame(&mut self) {
         if !self.counter_halt() {
-            if self.length_counter > 0 {
-                self.length_counter -= 1;
-            }
-            if self.length_counter == 0 {
-                self.length_counter_zero = true;
-            } else {
-                self.length_counter_zero = false;
-            }
+            self.lc.tick();
         }
     }
 
     pub fn tick_quarter_frame(&mut self) {
-        if self.reload_lc {
+        if self.reload_linear {
             self.linear_counter = self.linear_counter();
         } else if self.linear_counter > 0 {
             self.linear_counter -= 1;
@@ -80,14 +72,14 @@ impl Triangle {
 
         // Disable reload if control is clear
         if !self.control() {
-            self.reload_lc = false;
+            self.reload_linear = false;
         }
     }
 
     pub fn set_enable(&mut self, enable: bool) {
         self.enable = enable;
         if !enable {
-            self.length_counter = 0;
+            self.lc.counter = 0;
         }
     }
 
@@ -102,8 +94,8 @@ impl Triangle {
     pub fn write_r3(&mut self, data: u8) {
         self.r3 = data;
         if self.enable {
-            self.length_counter = super::LENGTH_VALUES[self.counter_load() as usize];
+            self.lc.counter = super::LENGTH_VALUES[self.counter_load() as usize];
         };
-        self.reload_lc = true;
+        self.reload_linear = true;
     }
 }

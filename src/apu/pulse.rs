@@ -1,5 +1,7 @@
 use bitbash::bitfield;
 
+use super::common::{Envelope, LengthCounter};
+
 bitfield! {
     #[derive(Default)]
     pub struct Pulse{
@@ -15,13 +17,10 @@ bitfield! {
         sweep_period: i8,
         sample: u8,
         sw_reload: bool,
-        length_counter: u8,
         enable: bool,
-        length_counter_zero: bool,
-        envelope_counter: u8,
-        envelope_divider: u8,
 
-        reset_envelope: bool,
+        env: Envelope,
+        lc: LengthCounter,
     }
 
     pub field volume: u8 = r0[0..4];
@@ -70,11 +69,7 @@ impl Pulse {
         };
 
         if odd {
-            if !self.enable
-                || self.length_counter_zero
-                || self.period < 8
-                || self.target_period > 0x7FF
-            {
+            if !self.enable || self.lc.muting || self.period < 8 || self.target_period > 0x7FF {
                 self.sample = 0;
             } else {
                 if self.timer == 0 {
@@ -90,7 +85,7 @@ impl Pulse {
                 let volume = if self.const_vol() {
                     self.volume()
                 } else {
-                    self.envelope_counter
+                    self.env.value
                 };
                 self.sample = volume * Pulse::DUTY_TABLES[self.duty()][self.sequencer];
             }
@@ -116,44 +111,25 @@ impl Pulse {
         }
 
         if !self.counter_halt() {
-            if self.length_counter > 0 {
-                self.length_counter -= 1;
-            }
-            if self.length_counter == 0 {
-                self.length_counter_zero = true;
-            } else {
-                self.length_counter_zero = false;
-            }
+            self.lc.tick();
         }
     }
 
     pub fn tick_quarter_frame(&mut self) {
-        // Envelope
-        if self.reset_envelope {
-            self.envelope_divider = self.envelope();
-            self.envelope_counter = 15;
-            self.reset_envelope = false;
-        } else if self.envelope_divider == 0 {
-            self.envelope_divider = self.envelope();
-            if self.env_loop() && self.envelope_counter == 0 {
-                self.envelope_counter = 15;
-            } else if self.envelope_counter > 0 {
-                self.envelope_counter -= 1;
-            }
-        } else {
-            self.envelope_divider -= 1;
-        }
+        self.env.tick();
     }
 
     pub fn set_enable(&mut self, enable: bool) {
         self.enable = enable;
         if !enable {
-            self.length_counter = 0;
+            self.lc.counter = 0;
         }
     }
 
     pub fn write_r0(&mut self, data: u8) {
         self.r0 = data;
+        self.env.divider_start = self.envelope();
+        self.env.looping = self.env_loop();
     }
 
     pub fn write_r1(&mut self, data: u8) {
@@ -171,8 +147,8 @@ impl Pulse {
         self.period = self.timer();
         self.sequencer = 0;
         if self.enable {
-            self.length_counter = super::LENGTH_VALUES[self.counter_load() as usize];
+            self.lc.counter = super::LENGTH_VALUES[self.counter_load() as usize];
         };
-        self.reset_envelope = true;
+        self.env.reset = true;
     }
 }

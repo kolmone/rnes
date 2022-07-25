@@ -195,21 +195,23 @@ fn run_rom(file: &str, do_trace: bool, render_debug: bool, fullscreen: bool) {
         Rom::new(rom).unwrap(),
         tx,
         |ppu: &Ppu, controller: &mut Controller| {
-            // let mut now = SystemTime::now();
-            // if now < expected_timestamp {
-            //     // println!(
-            //     //     "Frame done in {:?}!",
-            //     //     now.duration_since(prev_timestamp).unwrap()
-            //     // );
-            //     while now < expected_timestamp {
-            //         yield_now();
-            //         now = SystemTime::now();
-            //     }
-            // } else {
-            //     println!("Arrived late");
-            // }
-            // prev_timestamp = expected_timestamp;
-            // expected_timestamp += Duration::from_nanos(16666667);
+            if !fullscreen {
+                let mut now = SystemTime::now();
+                if now < expected_timestamp {
+                    // println!(
+                    //     "Frame done in {:?}!",
+                    //     now.duration_since(prev_timestamp).unwrap()
+                    // );
+                    while now < expected_timestamp {
+                        yield_now();
+                        now = SystemTime::now();
+                    }
+                } else {
+                    println!("Arrived late");
+                }
+                prev_timestamp = expected_timestamp;
+                expected_timestamp += Duration::from_nanos(16666667);
+            }
             renderer.render_screen(ppu, &mut canvas, &mut texture, render_debug);
 
             for event in event_pump.poll_iter() {

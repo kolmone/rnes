@@ -1,3 +1,4 @@
+mod common;
 mod noise;
 mod pulse;
 mod triangle;
