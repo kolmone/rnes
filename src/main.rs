@@ -138,9 +138,9 @@ impl AudioHandler {
     }
 }
 
-fn run_rom(file: &str, do_trace: bool, render_debug: bool) {
+fn run_rom(file: &str, do_trace: bool, render_debug: bool, fullscreen: bool) {
     let sdl = sdl2::init().unwrap();
-    let window = sdl
+    let mut window = sdl
         .video()
         .unwrap()
         .window("N3S", 256 * 4, 240 * 4)
@@ -158,6 +158,15 @@ fn run_rom(file: &str, do_trace: bool, render_debug: bool) {
         audio_spec.freq.unwrap() as usize,
         audio_spec.samples.unwrap() as usize,
     );
+
+    if fullscreen {
+        let mut mode = window.display_mode().unwrap();
+        mode.refresh_rate = 60;
+        window
+            .set_fullscreen(sdl2::video::FullscreenType::True)
+            .unwrap();
+        window.set_display_mode(mode).unwrap();
+    }
 
     let mut canvas = window.into_canvas().present_vsync().build().unwrap();
 
@@ -186,26 +195,30 @@ fn run_rom(file: &str, do_trace: bool, render_debug: bool) {
         Rom::new(rom).unwrap(),
         tx,
         |ppu: &Ppu, controller: &mut Controller| {
-            let mut now = SystemTime::now();
-            if now < expected_timestamp {
-                // println!(
-                //     "Frame done in {:?}!",
-                //     now.duration_since(prev_timestamp).unwrap()
-                // );
-                while now < expected_timestamp {
-                    yield_now();
-                    now = SystemTime::now();
-                }
-            } else {
-                println!("Arrived late");
-            }
-            prev_timestamp = expected_timestamp;
-            expected_timestamp += Duration::from_nanos(16666667);
+            // let mut now = SystemTime::now();
+            // if now < expected_timestamp {
+            //     // println!(
+            //     //     "Frame done in {:?}!",
+            //     //     now.duration_since(prev_timestamp).unwrap()
+            //     // );
+            //     while now < expected_timestamp {
+            //         yield_now();
+            //         now = SystemTime::now();
+            //     }
+            // } else {
+            //     println!("Arrived late");
+            // }
+            // prev_timestamp = expected_timestamp;
+            // expected_timestamp += Duration::from_nanos(16666667);
             renderer.render_screen(ppu, &mut canvas, &mut texture, render_debug);
 
             for event in event_pump.poll_iter() {
                 match event {
                     Event::Quit { .. } => std::process::exit(0),
+                    Event::KeyDown {
+                        keycode: Some(Keycode::Escape),
+                        ..
+                    } => std::process::exit(0),
                     Event::KeyDown { keycode, .. } => {
                         if let Some(key) = keymap.get(&keycode.unwrap_or(Keycode::Ampersand)) {
                             controller.set_button_state(*key, true);
@@ -275,6 +288,7 @@ fn main() {
 
     let trace = args.contains(&"--trace".to_owned());
     let render_debug = args.contains(&"--debug".to_owned());
+    let fullscreen = args.contains(&"--full".to_owned());
 
-    run_rom(&args[1], trace, render_debug);
+    run_rom(&args[1], trace, render_debug, fullscreen);
 }

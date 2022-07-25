@@ -1,26 +1,28 @@
 use bitbash::bitfield;
 
 bitfield! {
+    #[derive(Default)]
     pub struct Pulse{
         r0: u8,
         r1: u8,
         r2: u8,
         r3: u8,
+        idx: u8,
         timer: u16,
         period: u16,
         target_period: u16,
         sequencer: usize,
         sweep_period: i8,
         sample: u8,
-        sw_reload: u8,
+        sw_reload: bool,
         length_counter: u8,
-        enable: u8,
-        length_counter_zero: u8,
+        enable: bool,
+        length_counter_zero: bool,
         envelope_counter: u8,
         envelope_divider: u8,
-        reset_envelope: u8,
+
+        reset_envelope: bool,
     }
-    pub new();
 
     pub field volume: u8 = r0[0..4];
     pub field envelope: u8 = r0[0..4];
@@ -48,17 +50,28 @@ impl Pulse {
         [1, 1, 1, 1, 1, 1, 0, 0],
     ];
 
+    pub fn new(idx: u8) -> Self {
+        Self {
+            idx,
+            ..Default::default()
+        }
+    }
+
     pub fn tick(&mut self, odd: bool) -> u8 {
         let period_shifted = self.period >> self.sw_shift();
         self.target_period = if self.sw_negate() {
-            self.period - period_shifted - 1
+            if self.idx == 0 {
+                self.period - period_shifted - 1
+            } else {
+                self.period - period_shifted
+            }
         } else {
             self.period + period_shifted
         };
 
         if odd {
-            if self.enable == 0
-                || self.length_counter_zero != 0
+            if !self.enable
+                || self.length_counter_zero
                 || self.period < 8
                 || self.target_period > 0x7FF
             {
@@ -97,8 +110,8 @@ impl Pulse {
         {
             self.period = self.target_period;
         }
-        if self.sweep_period < 0 || self.sw_reload != 0 {
-            self.sw_reload = 0;
+        if self.sweep_period < 0 || self.sw_reload {
+            self.sw_reload = false;
             self.sweep_period = self.sw_period() as i8;
         }
 
@@ -107,19 +120,19 @@ impl Pulse {
                 self.length_counter -= 1;
             }
             if self.length_counter == 0 {
-                self.length_counter_zero = 1;
+                self.length_counter_zero = true;
             } else {
-                self.length_counter_zero = 0;
+                self.length_counter_zero = false;
             }
         }
     }
 
     pub fn tick_quarter_frame(&mut self) {
         // Envelope
-        if self.reset_envelope != 0 {
+        if self.reset_envelope {
             self.envelope_divider = self.envelope();
             self.envelope_counter = 15;
-            self.reset_envelope = 0;
+            self.reset_envelope = false;
         } else if self.envelope_divider == 0 {
             self.envelope_divider = self.envelope();
             if self.env_loop() && self.envelope_counter == 0 {
@@ -133,7 +146,7 @@ impl Pulse {
     }
 
     pub fn set_enable(&mut self, enable: bool) {
-        self.enable = enable as u8;
+        self.enable = enable;
         if !enable {
             self.length_counter = 0;
         }
@@ -145,7 +158,7 @@ impl Pulse {
 
     pub fn write_r1(&mut self, data: u8) {
         self.r1 = data;
-        self.sw_reload = 1;
+        self.sw_reload = true;
     }
 
     pub fn write_r2(&mut self, data: u8) {
@@ -157,9 +170,9 @@ impl Pulse {
         self.r3 = data;
         self.period = self.timer();
         self.sequencer = 0;
-        if self.enable != 0 {
+        if self.enable {
             self.length_counter = super::LENGTH_VALUES[self.counter_load() as usize];
         };
-        self.reset_envelope = 1;
+        self.reset_envelope = true;
     }
 }

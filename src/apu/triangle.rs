@@ -3,6 +3,7 @@
 use bitbash::bitfield;
 
 bitfield! {
+    #[derive(Default)]
     pub struct Triangle{
         r0: u8,
         r2: u8,
@@ -11,14 +12,13 @@ bitfield! {
         timer: u16,
 
         length_counter: u8,
-        enable: u8,
-        length_counter_zero: u8,
+        enable: bool,
+        length_counter_zero: bool,
 
         wave_ptr: usize,
         linear_counter: u8,
-        reload_lc: u8,
+        reload_lc: bool,
     }
-    pub new();
 
     pub field linear_counter: u8 = r0[0..7];
     pub field control: bool = r0[7];
@@ -38,8 +38,12 @@ impl Triangle {
         0,  1,  2,  3,  4,  5,  6, 7, 8, 9, 10, 11, 12, 13, 14, 15,
     ];
 
+    pub fn new() -> Self {
+        Self { ..Default::default() }
+    }
+
     pub fn tick(&mut self) -> u8 {
-        if self.enable == 0 || self.length_counter_zero != 0 || self.linear_counter == 0 {
+        if !self.enable || self.length_counter_zero || self.linear_counter == 0 {
             return Triangle::WAVE[self.wave_ptr];
         } else if self.timer == 0 {
             self.timer = self.timer();
@@ -60,15 +64,15 @@ impl Triangle {
                 self.length_counter -= 1;
             }
             if self.length_counter == 0 {
-                self.length_counter_zero = 1;
+                self.length_counter_zero = true;
             } else {
-                self.length_counter_zero = 0;
+                self.length_counter_zero = false;
             }
         }
     }
 
     pub fn tick_quarter_frame(&mut self) {
-        if self.reload_lc != 0 {
+        if self.reload_lc {
             self.linear_counter = self.linear_counter();
         } else if self.linear_counter > 0 {
             self.linear_counter -= 1;
@@ -76,15 +80,14 @@ impl Triangle {
 
         // Disable reload if control is clear
         if !self.control() {
-            self.reload_lc = 0;
+            self.reload_lc = false;
         }
     }
 
     pub fn set_enable(&mut self, enable: bool) {
-        self.enable = enable as u8;
+        self.enable = enable;
         if !enable {
             self.length_counter = 0;
-            self.length_counter_zero = 0;
         }
     }
 
@@ -98,9 +101,9 @@ impl Triangle {
 
     pub fn write_r3(&mut self, data: u8) {
         self.r3 = data;
-        if self.enable != 0 {
+        if self.enable {
             self.length_counter = super::LENGTH_VALUES[self.counter_load() as usize];
         };
-        self.reload_lc = 1;
+        self.reload_lc = true;
     }
 }

@@ -33,8 +33,8 @@ fn divide(dividend: f32, divisor: f32, zero_result: f32) -> f32 {
 impl Apu {
     pub fn new(tx: Sender<Vec<f32>>) -> Self {
         Apu {
-            pulse1: Pulse::new(),
-            pulse2: Pulse::new(),
+            pulse1: Pulse::new(0),
+            pulse2: Pulse::new(1),
             triangle: Triangle::new(),
             noise: Noise::new(),
             output: vec![0.0; 10000],
