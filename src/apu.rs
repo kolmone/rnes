@@ -96,15 +96,22 @@ impl Apu {
 
         self.tick_frame_counter();
 
+        self.triangle.tick();
+        if self.cycle % 2 == 0 {
+            self.pulse1.tick();
+            self.pulse2.tick();
+            self.noise.tick();
+        }
+
         // let pulse1_out = 0.0;
         // let pulse2_out = 0.0;
         // let tri_out = 0.0;
         // let noise_out = 0.0;
 
-        let pulse1_out = self.pulse1.tick(self.cycle % 2 != 0) as f32;
-        let pulse2_out = self.pulse2.tick(self.cycle % 2 != 0) as f32;
-        let tri_out = self.triangle.tick() as f32;
-        let noise_out = self.noise.tick() as f32;
+        let pulse1_out = self.pulse1.sample as f32;
+        let pulse2_out = self.pulse2.sample as f32;
+        let tri_out = self.triangle.sample as f32;
+        let noise_out = self.noise.sample as f32;
         let dmc_out = 64.0;
         let pulse_out = divide(
             95.88,
@@ -115,6 +122,7 @@ impl Apu {
         let tnd_out = divide(159.79, divide(1.0, tnd_tmp, -100.0) + 100.0, 0.0);
         let output = pulse_out + tnd_out - 0.5;
         self.output[self.output_idx] = output * 0.5;
+
         self.output_idx += 1;
         if self.output_idx >= self.output.len() {
             match self.tx.send(self.output.clone()) {

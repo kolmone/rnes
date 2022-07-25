@@ -14,18 +14,20 @@ bitfield! {
 
         lc: LengthCounter,
         env: Envelope,
+
+        pub sample: u8,
     }
 
-    pub field volume: u8 = r0[0..4];
-    pub field envelope: u8 = r0[0..4];
-    pub field const_vol: bool = r0[4];
-    pub field env_loop: bool = r0[5];
-    pub field counter_halt: bool = r0[5];
+    field volume: u8 = r0[0..4];
+    field envelope: u8 = r0[0..4];
+    field const_vol: bool = r0[4];
+    field env_loop: bool = r0[5];
+    field counter_halt: bool = r0[5];
 
-    pub field mode: bool = r2[7];
-    pub field period: u8 = r2[0..4];
+    field mode: bool = r2[7];
+    field period: u8 = r2[0..4];
 
-    pub field counter_load: u8 = r3[3..8];
+    field counter_load: u8 = r3[3..8];
 }
 
 impl Noise {
@@ -40,9 +42,10 @@ impl Noise {
         }
     }
 
-    pub fn tick(&mut self) -> u8 {
+    pub fn tick(&mut self) {
         if !self.enable {
-            return 0;
+            self.sample = 0;
+            return;
         }
 
         if self.timer == 0 {
@@ -65,9 +68,9 @@ impl Noise {
         };
 
         if self.shift_register & 0x1 == 0 && !self.lc.muting {
-            volume
+            self.sample = volume;
         } else {
-            0
+            self.sample = 0;
         }
     }
 

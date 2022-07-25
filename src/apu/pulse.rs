@@ -15,30 +15,31 @@ bitfield! {
         target_period: u16,
         sequencer: usize,
         sweep_period: i8,
-        sample: u8,
         sw_reload: bool,
         enable: bool,
 
         env: Envelope,
         lc: LengthCounter,
+
+        pub sample: u8,
     }
 
-    pub field volume: u8 = r0[0..4];
-    pub field envelope: u8 = r0[0..4];
-    pub field const_vol: bool = r0[4];
-    pub field env_loop: bool = r0[5];
-    pub field counter_halt: bool = r0[5];
-    pub field duty: usize = r0[6..8];
+    field volume: u8 = r0[0..4];
+    field envelope: u8 = r0[0..4];
+    field const_vol: bool = r0[4];
+    field env_loop: bool = r0[5];
+    field counter_halt: bool = r0[5];
+    field duty: usize = r0[6..8];
 
-    pub field sw_shift: u8 = r1[0..3];
-    pub field sw_negate: bool = r1[3];
-    pub field sw_period: u8 = r1[4..7];
-    pub field sw_enable: bool = r1[7];
+    field sw_shift: u8 = r1[0..3];
+    field sw_negate: bool = r1[3];
+    field sw_period: u8 = r1[4..7];
+    field sw_enable: bool = r1[7];
 
-    pub field timer_lo: u8 = r2[0..8];
-    pub field timer_hi: u8 = r3[0..3];
-    pub field timer: u16 = r2[0..8] ~ r3[0..3];
-    pub field counter_load: u8 = r3[3..8];
+    field timer_lo: u8 = r2[0..8];
+    field timer_hi: u8 = r3[0..3];
+    field timer: u16 = r2[0..8] ~ r3[0..3];
+    field counter_load: u8 = r3[3..8];
 }
 
 impl Pulse {
@@ -56,7 +57,7 @@ impl Pulse {
         }
     }
 
-    pub fn tick(&mut self, odd: bool) -> u8 {
+    pub fn tick(&mut self) {
         let period_shifted = self.period >> self.sw_shift();
         self.target_period = if self.sw_negate() {
             if self.idx == 0 {
@@ -68,29 +69,26 @@ impl Pulse {
             self.period + period_shifted
         };
 
-        if odd {
-            if !self.enable || self.lc.muting || self.period < 8 || self.target_period > 0x7FF {
-                self.sample = 0;
-            } else {
-                if self.timer == 0 {
-                    self.timer = self.period;
-                    if self.sequencer == 0 {
-                        self.sequencer = 7;
-                    } else {
-                        self.sequencer -= 1;
-                    }
+        if !self.enable || self.lc.muting || self.period < 8 || self.target_period > 0x7FF {
+            self.sample = 0;
+        } else {
+            if self.timer == 0 {
+                self.timer = self.period;
+                if self.sequencer == 0 {
+                    self.sequencer = 7;
                 } else {
-                    self.timer -= 1;
+                    self.sequencer -= 1;
                 }
-                let volume = if self.const_vol() {
-                    self.volume()
-                } else {
-                    self.env.value
-                };
-                self.sample = volume * Pulse::DUTY_TABLES[self.duty()][self.sequencer];
+            } else {
+                self.timer -= 1;
             }
+            let volume = if self.const_vol() {
+                self.volume()
+            } else {
+                self.env.value
+            };
+            self.sample = volume * Pulse::DUTY_TABLES[self.duty()][self.sequencer];
         }
-        self.sample
     }
 
     pub fn tick_half_frame(&mut self) {
