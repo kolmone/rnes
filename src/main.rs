@@ -8,6 +8,7 @@ mod cpu;
 mod ppu;
 mod renderer;
 
+use biquad::{Biquad, Coefficients, DirectForm2Transposed, ToHertz, Q_BUTTERWORTH_F32};
 use bus::{Bus, Rom};
 use controller::{Button, Controller};
 use cpu::Cpu;
@@ -41,21 +42,21 @@ fn build_keymap() -> HashMap<Keycode, Button> {
     keymap.insert(Keycode::Up, Button::Up);
     keymap.insert(Keycode::Right, Button::Right);
     keymap.insert(Keycode::Left, Button::Left);
-    keymap.insert(Keycode::Backspace, Button::Select);
-    keymap.insert(Keycode::Return, Button::Start);
-    keymap.insert(Keycode::X, Button::A);
-    keymap.insert(Keycode::Z, Button::B);
+    keymap.insert(Keycode::Q, Button::Select);
+    keymap.insert(Keycode::W, Button::Start);
+    keymap.insert(Keycode::S, Button::A);
+    keymap.insert(Keycode::A, Button::B);
     keymap
 }
 
 struct AudioHandler {
     input_buffer: Vec<f32>,
     output_data: Vec<Vec<f32>>,
-    // resampler: SincFixedOut<f32>,
     resampler: FftFixedOut<f32>,
     rx: Receiver<Vec<f32>>,
     samples_processed: usize,
     samples_received: usize,
+    bq: DirectForm2Transposed<f32>,
 }
 
 impl AudioCallback for AudioHandler {
@@ -97,16 +98,16 @@ impl AudioCallback for AudioHandler {
             &mut self.output_data,
             Some(&[true; 1]),
         ) {
-            Ok(()) => out.clone_from_slice(&self.output_data[0]),
+            Ok(()) => (),
+            // Ok(()) => out.clone_from_slice(&self.output_data[0]),
             Err(e) => panic!("Resampling error {}", e),
+        }
+        for (idx, elem) in self.output_data[0].iter().enumerate() {
+            out[idx] = self.bq.run(*elem);
         }
 
         self.input_buffer.drain(0..samples);
         self.samples_processed += samples;
-        // println!(
-        //     "Samples processed - received = {}",
-        //     self.samples_processed - self.samples_received
-        // );
     }
 }
 
@@ -114,6 +115,14 @@ impl AudioHandler {
     fn new(out_freq: usize, buffer_len: usize) -> (Self, Sender<Vec<f32>>) {
         let fft_resampler = FftFixedOut::new(APU_FREQ, out_freq, buffer_len, 1, 1).unwrap();
         let (tx, rx) = mpsc::channel::<Vec<f32>>();
+        let coeffs = Coefficients::<f32>::from_params(
+            biquad::Type::SinglePoleLowPass,
+            48.khz(),
+            14.khz(),
+            Q_BUTTERWORTH_F32,
+        )
+        .unwrap();
+        let bq = DirectForm2Transposed::<f32>::new(coeffs);
         (
             AudioHandler {
                 input_buffer: Vec::new(),
@@ -122,6 +131,7 @@ impl AudioHandler {
                 rx,
                 samples_processed: 0,
                 samples_received: 0,
+                bq,
             },
             tx,
         )
@@ -133,7 +143,7 @@ fn run_rom(file: &str, do_trace: bool, render_debug: bool) {
     let window = sdl
         .video()
         .unwrap()
-        .window("N3S", 256 * 3, 240 * 3)
+        .window("N3S", 256 * 4, 240 * 4)
         .position_centered()
         .build()
         .unwrap();
