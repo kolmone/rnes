@@ -113,7 +113,7 @@ impl Apu {
         let tnd_tmp = tri_out / 8227.0 + noise_out / 12241.0 + dmc_out / 22638.0;
         let tnd_out = divide(159.79, divide(1.0, tnd_tmp, -100.0) + 100.0, 0.0);
         let output = pulse_out + tnd_out - 0.5;
-        self.output[self.output_idx] = output * 0.3;
+        self.output[self.output_idx] = output * 0.5;
         self.output_idx += 1;
         if self.output_idx >= self.output.len() {
             match self.tx.send(self.output.clone()) {
