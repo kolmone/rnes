@@ -1,4 +1,4 @@
-use super::common::LengthCounter;
+
 use bitbash::bitfield;
 
 bitfield! {
@@ -11,7 +11,7 @@ bitfield! {
         timer: u16,
         enable: bool,
 
-        lc: LengthCounter,
+        length_counter: u8,
 
         wave_ptr: usize,
         linear_counter: u8,
@@ -43,9 +43,11 @@ impl Triangle {
     }
 
     pub fn tick(&mut self) {
-        if !self.enable || self.lc.muting || self.linear_counter == 0 {
+        if !self.enable || self.length_counter == 0 || self.linear_counter == 0 {
             return;
-        } else if self.timer == 0 {
+        }
+        
+        if self.timer == 0 {
             self.timer = self.timer();
             if self.wave_ptr == 0 {
                 self.wave_ptr = 31;
@@ -59,8 +61,8 @@ impl Triangle {
     }
 
     pub fn tick_half_frame(&mut self) {
-        if !self.counter_halt() {
-            self.lc.tick();
+        if !self.counter_halt() && self.length_counter > 0 {
+            self.length_counter -= 1;
         }
     }
 
@@ -80,7 +82,7 @@ impl Triangle {
     pub fn set_enable(&mut self, enable: bool) {
         self.enable = enable;
         if !enable {
-            self.lc.counter = 0;
+            self.length_counter = 0;
         }
     }
 
@@ -95,7 +97,7 @@ impl Triangle {
     pub fn write_r3(&mut self, data: u8) {
         self.r3 = data;
         if self.enable {
-            self.lc.counter = super::LENGTH_VALUES[self.counter_load() as usize];
+            self.length_counter = super::LENGTH_VALUES[self.counter_load() as usize];
         };
         self.reload_linear = true;
     }

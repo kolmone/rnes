@@ -24,7 +24,6 @@ bitfield! {
 }
 
 impl Dmc {
-
     pub fn new() -> Self {
         Self {
             ..Default::default()
@@ -54,11 +53,9 @@ impl Dmc {
         // }
     }
 
-    pub fn _tick_half_frame(&mut self) {
-    }
+    pub fn _tick_half_frame(&mut self) {}
 
-    pub fn _tick_quarter_frame(&mut self) {
-    }
+    pub fn _tick_quarter_frame(&mut self) {}
 
     pub fn set_enable(&mut self, enable: bool) {
         self.enable = enable;

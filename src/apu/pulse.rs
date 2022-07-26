@@ -1,6 +1,6 @@
 use bitbash::bitfield;
 
-use super::common::{Envelope, LengthCounter};
+use super::common::Envelope;
 
 bitfield! {
     #[derive(Default)]
@@ -19,7 +19,7 @@ bitfield! {
         enable: bool,
 
         env: Envelope,
-        lc: LengthCounter,
+        length_counter: u8,
 
         pub output: u8,
     }
@@ -58,6 +58,11 @@ impl Pulse {
     }
 
     pub fn tick(&mut self) {
+        if !self.enable {
+            self.output = 0;
+            return;
+        }
+
         let period_shifted = self.period >> self.sw_shift();
         self.target_period = if self.sw_negate() {
             if self.idx == 0 {
@@ -69,26 +74,25 @@ impl Pulse {
             self.period + period_shifted
         };
 
-        if !self.enable || self.lc.muting || self.period < 8 || self.target_period > 0x7FF {
-            self.output = 0;
+        let volume = if self.length_counter == 0 || self.period < 8 || self.target_period > 0x7FF {
+            0
+        } else if self.const_vol() {
+            self.volume()
         } else {
-            if self.timer == 0 {
-                self.timer = self.period;
-                if self.sequencer == 0 {
-                    self.sequencer = 7;
-                } else {
-                    self.sequencer -= 1;
-                }
+            self.env.value
+        };
+
+        if self.timer == 0 {
+            self.timer = self.period;
+            if self.sequencer == 0 {
+                self.sequencer = 7;
             } else {
-                self.timer -= 1;
+                self.sequencer -= 1;
             }
-            let volume = if self.const_vol() {
-                self.volume()
-            } else {
-                self.env.value
-            };
-            self.output = volume * Pulse::DUTY_TABLES[self.duty()][self.sequencer];
+        } else {
+            self.timer -= 1;
         }
+        self.output = volume * Pulse::DUTY_TABLES[self.duty()][self.sequencer];
     }
 
     pub fn tick_half_frame(&mut self) {
@@ -108,8 +112,8 @@ impl Pulse {
             self.sweep_period = self.sw_period() as i8;
         }
 
-        if !self.counter_halt() {
-            self.lc.tick();
+        if !self.counter_halt() && self.length_counter > 0 {
+            self.length_counter -= 1;
         }
     }
 
@@ -120,7 +124,7 @@ impl Pulse {
     pub fn set_enable(&mut self, enable: bool) {
         self.enable = enable;
         if !enable {
-            self.lc.counter = 0;
+            self.length_counter = 0;
         }
     }
 
@@ -145,7 +149,7 @@ impl Pulse {
         self.period = self.timer();
         self.sequencer = 0;
         if self.enable {
-            self.lc.counter = super::LENGTH_VALUES[self.counter_load() as usize];
+            self.length_counter = super::LENGTH_VALUES[self.counter_load() as usize];
         };
         self.env.reset = true;
     }

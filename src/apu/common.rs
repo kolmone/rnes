@@ -1,23 +1,4 @@
 #[derive(Default)]
-pub struct LengthCounter {
-    pub counter: u8,
-    pub muting: bool,
-}
-
-impl LengthCounter {
-    pub fn tick(&mut self) {
-        if self.counter > 0 {
-            self.counter -= 1;
-        }
-        if self.counter == 0 {
-            self.muting = true;
-        } else {
-            self.muting = false;
-        }
-    }
-}
-
-#[derive(Default)]
 pub struct Envelope {
     pub divider: u8,
     pub value: u8,

@@ -1,6 +1,6 @@
 use bitbash::bitfield;
 
-use super::common::{Envelope, LengthCounter};
+use super::common::Envelope;
 
 bitfield! {
     #[derive(Default)]
@@ -12,7 +12,7 @@ bitfield! {
         enable: bool,
         shift_register: u16,
 
-        lc: LengthCounter,
+        length_counter: u8,
         env: Envelope,
 
         pub output: u8,
@@ -67,7 +67,7 @@ impl Noise {
             self.env.value
         };
 
-        if self.shift_register & 0x1 == 0 && !self.lc.muting {
+        if self.shift_register & 0x1 == 0 && self.length_counter > 0 {
             self.output = volume;
         } else {
             self.output = 0;
@@ -75,8 +75,8 @@ impl Noise {
     }
 
     pub fn tick_half_frame(&mut self) {
-        if !self.counter_halt() {
-            self.lc.tick();
+        if !self.counter_halt() && self.length_counter > 0 {
+            self.length_counter -= 1;
         }
     }
 
@@ -87,7 +87,7 @@ impl Noise {
     pub fn set_enable(&mut self, enable: bool) {
         self.enable = enable;
         if !enable {
-            self.lc.counter = 0;
+            self.length_counter = 0;
         }
     }
 
@@ -105,7 +105,7 @@ impl Noise {
     pub fn write_r3(&mut self, data: u8) {
         self.r3 = data;
         if self.enable {
-            self.lc.counter = super::LENGTH_VALUES[self.counter_load() as usize];
+            self.length_counter = super::LENGTH_VALUES[self.counter_load() as usize];
         };
         self.env.reset = true;
     }

@@ -3,13 +3,15 @@
 
 mod apu;
 mod bus;
+mod cartridge;
 mod controller;
 mod cpu;
 mod ppu;
 mod renderer;
 
 use biquad::{Biquad, Coefficients, DirectForm2Transposed, ToHertz, Q_BUTTERWORTH_F32};
-use bus::{Bus, Rom};
+use bus::Bus;
+use cartridge::Cartridge;
 use controller::{Button, Controller};
 use cpu::Cpu;
 use ppu::Ppu;
@@ -192,7 +194,7 @@ fn run_rom(file: &str, do_trace: bool, render_debug: bool, fullscreen: bool) {
     let mut prev_timestamp = SystemTime::now();
 
     let bus = Bus::new(
-        Rom::new(rom).unwrap(),
+        Cartridge::new(rom).unwrap(),
         tx,
         |ppu: &Ppu, controller: &mut Controller| {
             if !fullscreen {
