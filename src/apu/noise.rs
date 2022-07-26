@@ -15,7 +15,7 @@ bitfield! {
         lc: LengthCounter,
         env: Envelope,
 
-        pub sample: u8,
+        pub output: u8,
     }
 
     field volume: u8 = r0[0..4];
@@ -44,7 +44,7 @@ impl Noise {
 
     pub fn tick(&mut self) {
         if !self.enable {
-            self.sample = 0;
+            self.output = 0;
             return;
         }
 
@@ -68,9 +68,9 @@ impl Noise {
         };
 
         if self.shift_register & 0x1 == 0 && !self.lc.muting {
-            self.sample = volume;
+            self.output = volume;
         } else {
-            self.sample = 0;
+            self.output = 0;
         }
     }
 

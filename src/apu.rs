@@ -2,17 +2,20 @@ mod common;
 mod noise;
 mod pulse;
 mod triangle;
+mod dmc;
 
 use noise::Noise;
 use pulse::Pulse;
 use std::sync::mpsc::Sender;
 use triangle::Triangle;
+use dmc::Dmc;
 
 pub struct Apu {
     pulse1: Pulse,
     pulse2: Pulse,
     triangle: Triangle,
     noise: Noise,
+    dmc: Dmc,
 
     output: Vec<f32>,
     output_idx: usize,
@@ -38,6 +41,7 @@ impl Apu {
             pulse2: Pulse::new(1),
             triangle: Triangle::new(),
             noise: Noise::new(),
+            dmc: Dmc::new(),
             output: vec![0.0; 10000],
             output_idx: 0,
             tx,
@@ -68,11 +72,17 @@ impl Apu {
             0x400E => self.noise.write_r2(data),
             0x400F => self.noise.write_r3(data),
 
+            0x4010 => self.dmc.write_r0(data),
+            0x4011 => self.dmc.write_r1(data),
+            0x4012 => self.dmc.write_r2(data),
+            0x4013 => self.dmc.write_r3(data),
+
             0x4015 => {
                 self.pulse1.set_enable(data & 0x01 != 0);
                 self.pulse2.set_enable(data & 0x02 != 0);
                 self.triangle.set_enable(data & 0x04 != 0);
                 self.noise.set_enable(data & 0x08 != 0);
+                self.dmc.set_enable(data & 0x10 != 0);
             }
             0x4017 => {
                 self.framec_mode = data & 0x80 != 0;
@@ -101,18 +111,20 @@ impl Apu {
             self.pulse1.tick();
             self.pulse2.tick();
             self.noise.tick();
+            self.dmc.tick();
         }
 
         // let pulse1_out = 0.0;
         // let pulse2_out = 0.0;
         // let tri_out = 0.0;
         // let noise_out = 0.0;
+        // let dmc_out = 0.0;
 
-        let pulse1_out = self.pulse1.sample as f32;
-        let pulse2_out = self.pulse2.sample as f32;
-        let tri_out = self.triangle.sample as f32;
-        let noise_out = self.noise.sample as f32;
-        let dmc_out = 64.0;
+        let pulse1_out = self.pulse1.output as f32;
+        let pulse2_out = self.pulse2.output as f32;
+        let tri_out = self.triangle.output as f32;
+        let noise_out = self.noise.output as f32;
+        let dmc_out = self.dmc.output as f32;
         let pulse_out = divide(
             95.88,
             divide(8128.0, pulse1_out + pulse2_out, -100.0) + 100.0,

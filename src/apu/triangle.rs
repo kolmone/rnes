@@ -17,7 +17,7 @@ bitfield! {
         linear_counter: u8,
         reload_linear: bool,
 
-        pub sample: u8,
+        pub output: u8,
     }
 
     field linear_counter: u8 = r0[0..7];
@@ -55,7 +55,7 @@ impl Triangle {
         } else {
             self.timer -= 1;
         }
-        self.sample = Triangle::WAVE[self.wave_ptr];
+        self.output = Triangle::WAVE[self.wave_ptr];
     }
 
     pub fn tick_half_frame(&mut self) {

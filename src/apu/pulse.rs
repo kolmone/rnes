@@ -21,7 +21,7 @@ bitfield! {
         env: Envelope,
         lc: LengthCounter,
 
-        pub sample: u8,
+        pub output: u8,
     }
 
     field volume: u8 = r0[0..4];
@@ -70,7 +70,7 @@ impl Pulse {
         };
 
         if !self.enable || self.lc.muting || self.period < 8 || self.target_period > 0x7FF {
-            self.sample = 0;
+            self.output = 0;
         } else {
             if self.timer == 0 {
                 self.timer = self.period;
@@ -87,7 +87,7 @@ impl Pulse {
             } else {
                 self.env.value
             };
-            self.sample = volume * Pulse::DUTY_TABLES[self.duty()][self.sequencer];
+            self.output = volume * Pulse::DUTY_TABLES[self.duty()][self.sequencer];
         }
     }
 
