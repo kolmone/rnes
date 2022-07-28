@@ -22,6 +22,7 @@ use sdl2::{
     event::Event,
     keyboard::Keycode,
     pixels::PixelFormatEnum,
+    EventPump,
 };
 use std::{
     collections::HashMap,
@@ -39,16 +40,43 @@ const APU_FREQ: usize = CPU_FREQ;
 const _PPU_FREQ: usize = MAIN_FREQ / 4;
 
 fn build_keymap() -> HashMap<Keycode, Button> {
-    let mut keymap = HashMap::new();
-    keymap.insert(Keycode::Down, Button::Down);
-    keymap.insert(Keycode::Up, Button::Up);
-    keymap.insert(Keycode::Right, Button::Right);
-    keymap.insert(Keycode::Left, Button::Left);
-    keymap.insert(Keycode::Q, Button::Select);
-    keymap.insert(Keycode::W, Button::Start);
-    keymap.insert(Keycode::S, Button::A);
-    keymap.insert(Keycode::A, Button::B);
-    keymap
+    HashMap::from([
+        (Keycode::Down, Button::Down),
+        (Keycode::Up, Button::Up),
+        (Keycode::Right, Button::Right),
+        (Keycode::Left, Button::Left),
+        (Keycode::Q, Button::Select),
+        (Keycode::W, Button::Start),
+        (Keycode::S, Button::A),
+        (Keycode::A, Button::B),
+    ])
+}
+
+fn handle_input(
+    keymap: &HashMap<Keycode, Button>,
+    event_pump: &mut EventPump,
+    controller: &mut Controller,
+) {
+    for event in event_pump.poll_iter() {
+        match event {
+            Event::Quit { .. } => std::process::exit(0),
+            Event::KeyDown {
+                keycode: Some(Keycode::Escape),
+                ..
+            } => std::process::exit(0),
+            Event::KeyDown { keycode, .. } => {
+                if let Some(key) = keymap.get(&keycode.unwrap_or(Keycode::Ampersand)) {
+                    controller.set_button_state(*key, true);
+                }
+            }
+            Event::KeyUp { keycode, .. } => {
+                if let Some(key) = keymap.get(&keycode.unwrap_or(Keycode::Ampersand)) {
+                    controller.set_button_state(*key, false);
+                }
+            }
+            _ => { /* do nothing */ }
+        }
+    }
 }
 
 struct AudioHandler {
@@ -216,26 +244,7 @@ fn run_rom(file: &str, do_trace: bool, render_debug: bool, fullscreen: bool) {
             }
             renderer.render_screen(ppu, &mut canvas, &mut texture, render_debug);
 
-            for event in event_pump.poll_iter() {
-                match event {
-                    Event::Quit { .. } => std::process::exit(0),
-                    Event::KeyDown {
-                        keycode: Some(Keycode::Escape),
-                        ..
-                    } => std::process::exit(0),
-                    Event::KeyDown { keycode, .. } => {
-                        if let Some(key) = keymap.get(&keycode.unwrap_or(Keycode::Ampersand)) {
-                            controller.set_button_state(*key, true);
-                        }
-                    }
-                    Event::KeyUp { keycode, .. } => {
-                        if let Some(key) = keymap.get(&keycode.unwrap_or(Keycode::Ampersand)) {
-                            controller.set_button_state(*key, false);
-                        }
-                    }
-                    _ => { /* do nothing */ }
-                }
-            }
+            handle_input(&keymap, &mut event_pump, controller);
         },
     );
     let mut cpu = Cpu::new(bus);

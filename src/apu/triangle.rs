@@ -11,7 +11,7 @@ bitfield! {
         timer: u16,
         enable: bool,
 
-        length_counter: u8,
+        pub length_counter: u8,
 
         wave_ptr: usize,
         linear_counter: u8,

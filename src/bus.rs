@@ -52,12 +52,16 @@ impl<'call> Bus<'call> {
             }
         }
         for _ in 0..cycles {
-            self.apu.tick();
+            self.apu.tick(&mut self.cartridge);
         }
     }
 
-    pub fn get_nmi_state(&mut self) -> bool {
+    pub fn nmi_active(&mut self) -> bool {
         self.ppu.nmi_up
+    }
+
+    pub fn irq_active(&mut self) -> bool {
+        self.cartridge.irq_active() | self.apu.irq_active()
     }
 
     pub fn read(&mut self, addr: u16) -> u8 {

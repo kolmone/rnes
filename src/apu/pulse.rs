@@ -19,7 +19,7 @@ bitfield! {
         enable: bool,
 
         env: Envelope,
-        length_counter: u8,
+        pub length_counter: u8,
 
         pub output: u8,
     }

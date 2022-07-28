@@ -1,14 +1,16 @@
 mod common;
+mod dmc;
 mod noise;
 mod pulse;
 mod triangle;
-mod dmc;
 
+use dmc::Dmc;
 use noise::Noise;
 use pulse::Pulse;
 use std::sync::mpsc::Sender;
 use triangle::Triangle;
-use dmc::Dmc;
+
+use crate::cartridge::Cartridge;
 
 pub struct Apu {
     pulse1: Pulse,
@@ -22,6 +24,9 @@ pub struct Apu {
     tx: Sender<Vec<f32>>,
 
     cycle: usize,
+
+    irq_disable: bool,
+    irq: bool,
 
     framec_cycle: usize,
     framec_mode: bool,
@@ -46,6 +51,8 @@ impl Apu {
             output_idx: 0,
             tx,
             cycle: 0,
+            irq_disable: false,
+            irq: false,
             framec_cycle: 0,
             framec_mode: false,
         }
@@ -78,6 +85,7 @@ impl Apu {
             0x4013 => self.dmc.write_r3(data),
 
             0x4015 => {
+                // println!("ctrl write {:X}", data);
                 self.pulse1.set_enable(data & 0x01 != 0);
                 self.pulse2.set_enable(data & 0x02 != 0);
                 self.triangle.set_enable(data & 0x04 != 0);
@@ -85,6 +93,8 @@ impl Apu {
                 self.dmc.set_enable(data & 0x10 != 0);
             }
             0x4017 => {
+                self.irq_disable = data & 0x40 != 0;
+                self.irq = if self.irq_disable { false } else { self.irq };
                 self.framec_mode = data & 0x80 != 0;
                 if self.framec_mode {
                     self.cycle = 18639;
@@ -94,24 +104,40 @@ impl Apu {
         }
     }
 
-    pub fn read(&self, _addr: u16) -> u8 {
-        // match addr {
-        //     _ => todo!(),
-        // }
-        0
+    pub fn read(&mut self, addr: u16) -> u8 {
+        match addr {
+            0x4015 => {
+                let mut val = (self.pulse1.length_counter > 0) as u8;
+                val |= ((self.pulse2.length_counter > 0) as u8) << 1;
+                val |= ((self.triangle.length_counter > 0) as u8) << 2;
+                val |= ((self.noise.length_counter > 0) as u8) << 3;
+                val |= ((self.dmc.bytes_remaining > 0) as u8) << 4;
+                val |= (self.irq as u8) << 6;
+                val |= (self.dmc.irq as u8) << 7;
+
+                self.irq = false;
+
+                val
+            }
+            _ => 0,
+        }
     }
 
-    pub fn tick(&mut self) {
+    pub fn irq_active(&self) -> bool {
+        self.irq | self.dmc.irq
+    }
+
+    pub fn tick(&mut self, cartridge: &mut Cartridge) {
         self.cycle += 1;
 
         self.tick_frame_counter();
 
         self.triangle.tick();
+        self.dmc.tick(cartridge);
         if self.cycle % 2 == 0 {
             self.pulse1.tick();
             self.pulse2.tick();
             self.noise.tick();
-            self.dmc.tick();
         }
 
         // let pulse1_out = 0.0;
@@ -154,6 +180,7 @@ impl Apu {
                     self.tick_half_frame();
                 }
                 14914 if !self.framec_mode => {
+                    self.irq = !self.irq_disable;
                     self.tick_quarter_frame();
                     self.tick_half_frame();
                 }

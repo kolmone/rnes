@@ -52,16 +52,6 @@ impl<'a> Cpu<'a> {
         }
     }
 
-    pub fn reset(&mut self) {
-        self.register_a = 0;
-        self.register_x = 0;
-        self.register_y = 0;
-        self.stack_pointer = 0xfd;
-        self.status = StatusReg(0).with_irq_disable(true).with_unused(true);
-
-        self.program_counter = self.bus.read_u16(RESET_ADDR);
-    }
-
     fn update_zero_neg(&mut self, val: u8) {
         self.status.set_zero(val == 0);
         self.status.set_negative(val >= 128);
@@ -196,6 +186,172 @@ impl<'a> Cpu<'a> {
         }
     }
 
+    // Used for testing
+    fn _run(&mut self) {
+        self.run_with_callback(|_| {});
+    }
+
+    fn nmi(&mut self) {
+        // println!("In NMI");
+        self.push_stack_u16(self.program_counter);
+        self.push_stack(self.status.0);
+        self.status.set_irq_disable(true);
+
+        self.bus.tick(7);
+        let target = self.bus.read_u16(0xFFFA);
+        self.program_counter = target;
+    }
+
+    fn irq(&mut self) {
+        // println!("In IRQ");
+        self.push_stack_u16(self.program_counter);
+        self.push_stack(self.status.0);
+        self.status.set_irq_disable(true);
+
+        self.bus.tick(7);
+        let target = self.bus.read_u16(0xFFFE);
+        self.program_counter = target;
+    }
+
+    pub fn reset(&mut self) {
+        self.register_a = 0;
+        self.register_x = 0;
+        self.register_y = 0;
+        self.stack_pointer = 0xfd;
+        self.status = StatusReg(0).with_irq_disable(true).with_unused(true);
+
+        self.program_counter = self.bus.read_u16(RESET_ADDR);
+    }
+
+    pub fn run_with_callback<F>(&mut self, mut callback: F)
+    where
+        F: FnMut(&mut Cpu),
+    {
+        let mut instructions = instr::INSTRUCTIONS.clone();
+        instructions.sort_unstable_by_key(|k| k.opcode);
+
+        loop {
+            let op = self.bus.read(self.program_counter);
+
+            let instruction = instructions[op as usize];
+
+            self.mnemonic = instruction.mnemonic.to_owned();
+            self.cycles = instruction.duration;
+
+            callback(self);
+
+            self.program_counter += 1;
+
+            match instruction.mnemonic {
+                "ADC" => self.adc(&instruction.addressing_mode, false),
+                "ANC" => self.anc(&instruction.addressing_mode),
+                "AND" => self.and(&instruction.addressing_mode),
+                "ASL" => self.asl(&instruction.addressing_mode),
+                "BCC" => self.bcc(),
+                "BCS" => self.bcs(),
+                "BEQ" => self.beq(),
+                "BIT" => self.bit(&instruction.addressing_mode),
+                "BMI" => self.bmi(),
+                "BNE" => self.bne(),
+                "BPL" => self.bpl(),
+                "BRK" => self.brk(),
+                "BVC" => self.bvc(),
+                "BVS" => self.bvs(),
+                "CLC" => self.status.set_carry(false),
+                "CLD" => self.status.set_decimal(false),
+                "CLI" => self.status.set_irq_disable(false),
+                "CLV" => self.status.set_overflow(false),
+                "CMP" => self.compare(self.register_a, &instruction.addressing_mode),
+                "CPX" => self.compare(self.register_x, &instruction.addressing_mode),
+                "CPY" => self.compare(self.register_y, &instruction.addressing_mode),
+                "DEC" => self.dec(&instruction.addressing_mode),
+                "DEX" => self.dex(),
+                "DEY" => self.dey(),
+                "EOR" => self.eor(&instruction.addressing_mode),
+                "HLT" => return,
+                "INC" => self.inc(&instruction.addressing_mode),
+                "INX" => self.inx(),
+                "INY" => self.iny(),
+                "JMP" => self.jmp(&instruction.addressing_mode),
+                "JSR" => self.jsr(),
+                "LDA" => self.lda(&instruction.addressing_mode),
+                "LDX" => self.ldx(&instruction.addressing_mode),
+                "LDY" => self.ldy(&instruction.addressing_mode),
+                "LSR" => self.lsr(&instruction.addressing_mode),
+                "NOP" => (),
+                "ORA" => self.ora(&instruction.addressing_mode),
+                "PHA" => self.push_stack(self.register_a),
+                "PHP" => self.push_stack(self.status.with_break_cmd(true).0),
+                "PLA" => {
+                    self.register_a = self.pull_stack();
+                    self.update_zero_neg(self.register_a)
+                }
+                "PLP" => self.status.0 = self.pull_stack() & 0xEF | 0x20,
+                "ROL" => self.rol(&instruction.addressing_mode),
+                "ROR" => self.ror(&instruction.addressing_mode),
+                "RTI" => self.rti(),
+                "RTS" => self.rts(),
+                "SBC" => self.adc(&instruction.addressing_mode, true),
+                "SEC" => self.status.set_carry(true),
+                "SED" => self.status.set_decimal(true),
+                "SEI" => self.status.set_irq_disable(true),
+                "STA" => {
+                    let addr = self.get_operand_addr(&instruction.addressing_mode);
+                    self.bus.write(addr, self.register_a)
+                }
+                "STX" => {
+                    let addr = self.get_operand_addr(&instruction.addressing_mode);
+                    self.bus.write(addr, self.register_x)
+                }
+                "STY" => {
+                    let addr = self.get_operand_addr(&instruction.addressing_mode);
+                    self.bus.write(addr, self.register_y)
+                }
+                "TAX" => self.tax(),
+                "TAY" => self.tay(),
+                "TSX" => self.tsx(),
+                "TXA" => self.txa(),
+                "TXS" => self.txs(),
+                "TYA" => self.tya(),
+
+                // Unofficial opcodes
+                "LAX" => self.lax(&instruction.addressing_mode),
+                "SAX" => self.sax(&instruction.addressing_mode),
+                "DCP" => self.dcp(&instruction.addressing_mode),
+                "ISB" => self.isb(&instruction.addressing_mode),
+                "SLO" => self.slo(&instruction.addressing_mode),
+                "RLA" => self.rla(&instruction.addressing_mode),
+                "SRE" => self.sre(&instruction.addressing_mode),
+                "RRA" => self.rra(&instruction.addressing_mode),
+
+                // Should never happen
+                _ => panic!("Uncrecognized mnemonic {}", instruction.mnemonic),
+            }
+
+            self.bus.tick(instruction.duration);
+
+            // Don't increment program counter for some instructions
+            match instruction.mnemonic {
+                "JMP" | "JSR" => (),
+                _ => self.program_counter += (instruction.bytes - 1) as u16,
+            }
+
+            if self.bus.nmi_active() && !self.nmi_seen {
+                self.nmi_seen = true;
+                self.nmi();
+            } else {
+                self.nmi_seen = self.bus.nmi_active();
+            }
+
+            if !self.status.irq_disable() && self.bus.irq_active() {
+                self.irq();
+            }
+        }
+    }
+}
+
+// Individual instruction behaviour is implemented here
+impl<'a> Cpu<'a> {
     fn adc(&mut self, mode: &AddressingMode, sbc: bool) {
         let addr = self.get_operand_addr(mode);
         let operand = if sbc {
@@ -321,16 +477,7 @@ impl<'a> Cpu<'a> {
     fn brk(&mut self) {
         self.push_stack_u16(self.program_counter.wrapping_add(1));
         self.push_stack(self.status.0 | 0x10);
-
-        // let target = if self.bus.get_nmi_state() && !self.nmi_seen {
-        //     self.nmi_seen = true;
-        // } else {
-        //     self.nmi_seen = self.bus.get_nmi_state();
-        //     self.bus.read_u16(0xFFFE)
-        // };
         let target = self.bus.read_u16(0xFFFE);
-
-        // println!("BRK jumping to 0x{:x}", target);
         self.program_counter = target;
     }
 
@@ -583,145 +730,6 @@ impl<'a> Cpu<'a> {
     fn rra(&mut self, mode: &AddressingMode) {
         self.ror(mode);
         self.adc(mode, false);
-    }
-
-    // Used for testing
-    fn _run(&mut self) {
-        self.run_with_callback(|_| {});
-    }
-
-    fn nmi(&mut self) {
-        // println!("In NMI");
-        self.push_stack_u16(self.program_counter);
-        self.push_stack(self.status.0);
-        self.status.set_irq_disable(true);
-
-        self.bus.tick(2);
-        let target = self.bus.read_u16(0xFFFA);
-        // println!("NMI jumping to 0x{:x}", target);
-        self.program_counter = target;
-    }
-
-    pub fn run_with_callback<F>(&mut self, mut callback: F)
-    where
-        F: FnMut(&mut Cpu),
-    {
-        let mut instructions = instr::INSTRUCTIONS.clone();
-        instructions.sort_unstable_by_key(|k| k.opcode);
-
-        loop {
-            let op = self.bus.read(self.program_counter);
-
-            let instruction = instructions[op as usize];
-
-            self.mnemonic = instruction.mnemonic.to_owned();
-            self.cycles = instruction.duration;
-
-            callback(self);
-
-            self.program_counter += 1;
-
-            match instruction.mnemonic {
-                "ADC" => self.adc(&instruction.addressing_mode, false),
-                "ANC" => self.anc(&instruction.addressing_mode),
-                "AND" => self.and(&instruction.addressing_mode),
-                "ASL" => self.asl(&instruction.addressing_mode),
-                "BCC" => self.bcc(),
-                "BCS" => self.bcs(),
-                "BEQ" => self.beq(),
-                "BIT" => self.bit(&instruction.addressing_mode),
-                "BMI" => self.bmi(),
-                "BNE" => self.bne(),
-                "BPL" => self.bpl(),
-                "BRK" => self.brk(),
-                "BVC" => self.bvc(),
-                "BVS" => self.bvs(),
-                "CLC" => self.status.set_carry(false),
-                "CLD" => self.status.set_decimal(false),
-                "CLI" => self.status.set_irq_disable(false),
-                "CLV" => self.status.set_overflow(false),
-                "CMP" => self.compare(self.register_a, &instruction.addressing_mode),
-                "CPX" => self.compare(self.register_x, &instruction.addressing_mode),
-                "CPY" => self.compare(self.register_y, &instruction.addressing_mode),
-                "DEC" => self.dec(&instruction.addressing_mode),
-                "DEX" => self.dex(),
-                "DEY" => self.dey(),
-                "EOR" => self.eor(&instruction.addressing_mode),
-                "HLT" => return,
-                "INC" => self.inc(&instruction.addressing_mode),
-                "INX" => self.inx(),
-                "INY" => self.iny(),
-                "JMP" => self.jmp(&instruction.addressing_mode),
-                "JSR" => self.jsr(),
-                "LDA" => self.lda(&instruction.addressing_mode),
-                "LDX" => self.ldx(&instruction.addressing_mode),
-                "LDY" => self.ldy(&instruction.addressing_mode),
-                "LSR" => self.lsr(&instruction.addressing_mode),
-                "NOP" => (),
-                "ORA" => self.ora(&instruction.addressing_mode),
-                "PHA" => self.push_stack(self.register_a),
-                "PHP" => self.push_stack(self.status.with_break_cmd(true).0),
-                "PLA" => {
-                    self.register_a = self.pull_stack();
-                    self.update_zero_neg(self.register_a)
-                }
-                "PLP" => self.status.0 = self.pull_stack() & 0xEF | 0x20,
-                "ROL" => self.rol(&instruction.addressing_mode),
-                "ROR" => self.ror(&instruction.addressing_mode),
-                "RTI" => self.rti(),
-                "RTS" => self.rts(),
-                "SBC" => self.adc(&instruction.addressing_mode, true),
-                "SEC" => self.status.set_carry(true),
-                "SED" => self.status.set_decimal(true),
-                "SEI" => self.status.set_irq_disable(true),
-                "STA" => {
-                    let addr = self.get_operand_addr(&instruction.addressing_mode);
-                    self.bus.write(addr, self.register_a)
-                }
-                "STX" => {
-                    let addr = self.get_operand_addr(&instruction.addressing_mode);
-                    self.bus.write(addr, self.register_x)
-                }
-                "STY" => {
-                    let addr = self.get_operand_addr(&instruction.addressing_mode);
-                    self.bus.write(addr, self.register_y)
-                }
-                "TAX" => self.tax(),
-                "TAY" => self.tay(),
-                "TSX" => self.tsx(),
-                "TXA" => self.txa(),
-                "TXS" => self.txs(),
-                "TYA" => self.tya(),
-
-                // Unofficial opcodes
-                "LAX" => self.lax(&instruction.addressing_mode),
-                "SAX" => self.sax(&instruction.addressing_mode),
-                "DCP" => self.dcp(&instruction.addressing_mode),
-                "ISB" => self.isb(&instruction.addressing_mode),
-                "SLO" => self.slo(&instruction.addressing_mode),
-                "RLA" => self.rla(&instruction.addressing_mode),
-                "SRE" => self.sre(&instruction.addressing_mode),
-                "RRA" => self.rra(&instruction.addressing_mode),
-
-                // Should never happen
-                _ => panic!("Uncrecognized mnemonic {}", instruction.mnemonic),
-            }
-
-            self.bus.tick(instruction.duration);
-
-            // Don't increment program counter for some instructions
-            match instruction.mnemonic {
-                "JMP" | "JSR" => (),
-                _ => self.program_counter += (instruction.bytes - 1) as u16,
-            }
-
-            if self.bus.get_nmi_state() && !self.nmi_seen {
-                self.nmi_seen = true;
-                self.nmi();
-            } else {
-                self.nmi_seen = self.bus.get_nmi_state();
-            }
-        }
     }
 }
 
