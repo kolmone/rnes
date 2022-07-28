@@ -37,6 +37,7 @@ pub fn get_mapper(
     chr_ram_size: usize,
     mirroring: Mirroring,
 ) -> Result<Box<dyn Mapper>, String> {
+    println!("Using mapper {}", mapper);
     match mapper {
         0 => Ok(Box::new(Mapper000::new(
             prg_rom,
@@ -213,6 +214,7 @@ impl Mapper001 {
     }
 
     fn store_buffer(&mut self, addr: u16) {
+        // println!("Writing 0b{:b} to {:X}", self.buffer, addr);
         match addr {
             0x8000..=0x9FFF => self.write_control(self.buffer),
             0xA000..=0xBFFF if !self.chr_independent_banks => self.chr_bank0 = self.buffer & 0x1E,
@@ -246,6 +248,37 @@ impl Mapper001 {
         };
         self.chr_independent_banks = data & 0x10 != 0;
     }
+
+    fn get_chr_ref(&mut self, addr: u16) -> &mut u8 {
+        let idx = addr as usize % Self::CHR_ROM_BANK_SIZE;
+        let bank = addr as usize / Self::CHR_ROM_BANK_SIZE;
+        let banks = self.chr_banks.len();
+        if bank == 0 {
+            &mut self.chr_banks[self.chr_bank0 % banks][idx]
+        } else if !self.chr_independent_banks {
+            &mut self.chr_banks[(self.chr_bank0 + 1) % banks][idx]
+        } else {
+            &mut self.chr_banks[self.chr_bank1 % banks][idx]
+        }
+    }
+
+    fn get_prg_ref(&mut self, addr: u16) -> &mut u8 {
+        let idx = addr as usize % Self::PRG_ROM_BANK_SIZE;
+        let bank = (addr - 0x8000) as usize / Self::PRG_ROM_BANK_SIZE;
+        let banks = self.prg_banks.len();
+
+        if bank == 0 && self.prg_mode == Mapper001PrgMode::FixFirst {
+            &mut self.prg_banks[0][idx]
+        } else if bank == 0 {
+            &mut self.prg_banks[self.prg_bank0 % banks][idx]
+        } else if self.prg_mode == Mapper001PrgMode::SwitchBoth {
+            &mut self.prg_banks[(self.prg_bank0 + 1) % banks][idx]
+        } else if self.prg_mode == Mapper001PrgMode::FixLast {
+            &mut self.prg_banks[banks - 1][idx]
+        } else {
+            &mut self.prg_banks[self.prg_bank1 % banks][idx]
+        }
+    }
 }
 
 impl Mapper for Mapper001 {
@@ -258,26 +291,13 @@ impl Mapper for Mapper001 {
             0x6000..=0x7FFF => {
                 self.prg_ram_banks[self.prg_ram_bank][(addr as usize) % Self::PRG_RAM_BANK_SIZE]
             }
-            0x8000.. => {
-                let idx = addr as usize % Self::PRG_ROM_BANK_SIZE;
-                let bank = (addr - 0x8000) as usize / Self::PRG_ROM_BANK_SIZE;
-                if bank == 0 && self.prg_mode == Mapper001PrgMode::FixFirst {
-                    self.prg_banks.first().unwrap()[idx]
-                } else if bank == 0 {
-                    self.prg_banks[self.prg_bank0][idx]
-                } else if self.prg_mode == Mapper001PrgMode::SwitchBoth {
-                    self.prg_banks[self.prg_bank0 + 1][idx]
-                } else if self.prg_mode == Mapper001PrgMode::FixLast {
-                    self.prg_banks.last().unwrap()[idx]
-                } else {
-                    self.prg_banks[self.prg_bank1][idx]
-                }
-            }
+            0x8000.. => *self.get_prg_ref(addr),
             _ => panic!("Unexpected CPU read from address {:X}", addr),
         }
     }
 
     fn write_cpu(&mut self, addr: u16, data: u8) {
+        // println!("Write {:X} to mapper address {:X}", data, addr);
         match addr {
             0x6000..=0x7FFF => {
                 self.prg_ram_banks[self.prg_ram_bank][(addr as usize) % Self::PRG_RAM_BANK_SIZE] =
@@ -292,9 +312,9 @@ impl Mapper for Mapper001 {
                     self.bit_idx += 1;
                     if self.bit_idx == 5 {
                         self.store_buffer(addr);
+                        self.bit_idx = 0;
+                        self.buffer = 0;
                     }
-                    self.bit_idx = 0;
-                    self.buffer = 0;
                 }
             }
             _ => (),
@@ -303,34 +323,14 @@ impl Mapper for Mapper001 {
 
     fn read_ppu(&mut self, addr: u16) -> u8 {
         match addr {
-            0..=0x1FFF => {
-                let idx = addr as usize % Self::CHR_ROM_BANK_SIZE;
-                let bank = addr as usize / Self::CHR_ROM_BANK_SIZE;
-                if bank == 0 {
-                    self.chr_banks[self.chr_bank0][idx]
-                } else if !self.chr_independent_banks {
-                    self.chr_banks[self.chr_bank0 + 1][idx]
-                } else {
-                    self.chr_banks[self.chr_bank1][idx]
-                }
-            }
+            0..=0x1FFF => *self.get_chr_ref(addr),
             _ => panic!("PPU reading from address {:X}", addr),
         }
     }
 
     fn write_ppu(&mut self, addr: u16, data: u8) {
         match addr {
-            0..=0x1FFF => {
-                let idx = addr as usize % Self::CHR_ROM_BANK_SIZE;
-                let bank = addr as usize / Self::CHR_ROM_BANK_SIZE;
-                if bank == 0 {
-                    self.chr_banks[self.chr_bank0][idx] = data
-                } else if !self.chr_independent_banks {
-                    self.chr_banks[self.chr_bank0 + 1][idx] = data
-                } else {
-                    self.chr_banks[self.chr_bank1][idx] = data
-                }
-            }
+            0..=0x1FFF => *self.get_chr_ref(addr) = data,
             _ => panic!("PPU writing to address {:X}", addr),
         }
     }

@@ -405,7 +405,7 @@ impl Ppu {
             }
             REG_OAM_DATA => self.oam_read(),
             REG_DATA => self.data_read(cartridge),
-            _ => panic!("Read from unsupported PPU address at 0x{:x}", addr),
+            _ => 0,
         }
     }
 
