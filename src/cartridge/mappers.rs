@@ -38,6 +38,7 @@ pub fn get_mapper(
     mirroring: Mirroring,
 ) -> Result<Box<dyn Mapper>, String> {
     println!("Using mapper {}", mapper);
+
     match mapper {
         0 => Ok(Box::new(Mapper000::new(
             prg_rom,
@@ -181,7 +182,7 @@ impl Mapper001 {
     const PRG_RAM_BANK_SIZE: usize = 8 * 1024;
     const PRG_RAM_BANKS: usize = 4;
 
-    fn new(prg_rom: Vec<u8>, chr_rom: Vec<u8>, chr_ram_size: usize, mirroring: Mirroring) -> Self {
+    fn new(prg_rom: Vec<u8>, chr_rom: Vec<u8>, _chr_ram_size: usize, mirroring: Mirroring) -> Self {
         let prg_banks = prg_rom
             .chunks(Self::PRG_ROM_BANK_SIZE)
             .map(|x| x.to_vec())
@@ -228,7 +229,7 @@ impl Mapper001 {
                     Mapper001PrgMode::FixLast => self.prg_bank0 = bank,
                 }
             }
-            _ => panic!("Won't end up here"),
+            _ => unreachable!()
         }
     }
 
@@ -238,13 +239,13 @@ impl Mapper001 {
             1 => Mirroring::SingleScreenUpper,
             2 => Mirroring::Vertical,
             3 => Mirroring::Horizontal,
-            _ => panic!("Won't end up here"),
+            _ => unreachable!()
         };
         self.prg_mode = match (data >> 2) & 0x3 {
             0 | 1 => Mapper001PrgMode::SwitchBoth,
             2 => Mapper001PrgMode::FixFirst,
             3 => Mapper001PrgMode::FixLast,
-            _ => panic!("Won't end up here"),
+            _ => unreachable!()
         };
         self.chr_independent_banks = data & 0x10 != 0;
     }
@@ -317,7 +318,7 @@ impl Mapper for Mapper001 {
                     }
                 }
             }
-            _ => (),
+            _ => panic!("Unexpected CPU read from address {:X}", addr),
         }
     }
 
@@ -339,8 +340,8 @@ impl Mapper for Mapper001 {
         match self.mirroring {
             Mirroring::Vertical => mirror_vertical(addr),
             Mirroring::Horizontal => mirror_horizontal(addr),
-            Mirroring::SingleScreenLower => todo!(),
-            Mirroring::SingleScreenUpper => todo!(),
+            Mirroring::SingleScreenLower => mirror_single(addr, false),
+            Mirroring::SingleScreenUpper => mirror_single(addr, true),
             _ => panic!("Unsupported mirroring for Mapper001"),
         }
     }
