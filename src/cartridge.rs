@@ -1,9 +1,9 @@
-mod mappers;
+pub mod mappers;
 
 use mappers::*;
 
 pub struct Cartridge {
-    mapper: Box<dyn Mapper>,
+    pub mapper: Box<dyn Mapper>,
 }
 
 impl Cartridge {

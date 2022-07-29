@@ -15,6 +15,7 @@ pub struct Cpu<'a> {
     pub mnemonic: String,
     pub cycles: u8,
     nmi_seen: bool,
+    quit_on_brk: bool,
 }
 
 bitfield! {
@@ -49,6 +50,7 @@ impl<'a> Cpu<'a> {
             mnemonic: "".to_owned(),
             cycles: 0,
             nmi_seen: false,
+            quit_on_brk: false,
         }
     }
 
@@ -88,6 +90,7 @@ impl<'a> Cpu<'a> {
             self.bus.write(0x600 + idx as u16, *item);
         }
         self.program_counter = 0x600;
+        self.quit_on_brk = true;
     }
 
     fn get_operand_addr(&mut self, mode: &AddressingMode) -> u16 {
@@ -254,7 +257,7 @@ impl<'a> Cpu<'a> {
                 "BMI" => self.bmi(),
                 "BNE" => self.bne(),
                 "BPL" => self.bpl(),
-                "BRK" => self.brk(),
+                "BRK" => if self.quit_on_brk { return } else { self.brk() } ,
                 "BVC" => self.bvc(),
                 "BVS" => self.bvs(),
                 "CLC" => self.status.set_carry(false),
@@ -736,18 +739,19 @@ impl<'a> Cpu<'a> {
 #[cfg(test)]
 mod test {
     use super::*;
+    use crate::cartridge::Cartridge;
+    use crate::cartridge::mappers::*;
+    use std::sync::mpsc;
 
-    fn dummy_rom() -> crate::bus::Rom {
-        crate::bus::Rom {
-            prg: vec![0; 0],
-            chr: vec![0, 0],
-            mapper: 0,
-            mirroring: crate::bus::Mirroring::Horizontal,
+    fn dummy_cart() -> Cartridge {
+        Cartridge {
+            mapper: get_mapper(0, vec![0; 0x4000], vec![0; 0x2000], 0, Mirroring::Vertical).unwrap()
         }
     }
 
     fn dummy_bus() -> Bus<'static> {
-        Bus::new(dummy_rom(), |_, _| ())
+        let (tx, _) = mpsc::channel::<Vec<f32>>();
+        Bus::new(dummy_cart(), tx, |_, _| ())
     }
 
     #[test]
