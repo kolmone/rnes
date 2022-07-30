@@ -785,7 +785,6 @@ mod test {
     use super::*;
     use crate::console::cartridge::mappers::{get_mapper, Mirroring};
     use crate::console::cartridge::Cartridge;
-    use std::sync::mpsc;
 
     fn dummy_cart() -> Cartridge {
         Cartridge {
@@ -795,8 +794,7 @@ mod test {
     }
 
     fn dummy_bus() -> Bus<'static> {
-        let (tx, _) = mpsc::channel::<Vec<f32>>();
-        Bus::new(dummy_cart(), tx, |_, _| Ok(()))
+        Bus::new(dummy_cart())
     }
 
     #[test]
