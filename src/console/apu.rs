@@ -45,7 +45,7 @@ impl Apu {
             triangle: Triangle::new(),
             noise: Noise::new(),
             dmc: Dmc::new(),
-            output: vec![0.0; crate::APU_FREQ / 60],
+            output: vec![0.0; crate::APU_FREQ / 120],
             output_idx: 0,
             cycle: 0,
             irq_disable: false,

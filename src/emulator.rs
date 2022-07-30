@@ -54,7 +54,7 @@ impl Emulator {
         let renderer = Renderer::new()?;
         let audio_device = Self::init_audio(&sdl)?;
 
-        let audio_handler = AudioHandler::new(48000, 48000 / 60)?;
+        let audio_handler = AudioHandler::new(48000, 48000 / 120)?;
 
         Ok(Self {
             event_pump,
@@ -76,7 +76,7 @@ impl Emulator {
         };
 
         let mut window = video
-            .window("N3S", 256 * 4, 240 * 4)
+            .window("N3S", 256 * 3, 240 * 3)
             .position_centered()
             .resizable()
             .build()?;
@@ -233,15 +233,18 @@ impl AudioHandler {
     }
 
     fn process(&mut self, input: &[f32], queue: &mut AudioQueue<f32>) {
-        println!("Current buffer length is {}", queue.size() / 4);
-
         let samples = self.resampler.input_frames_next();
         self.samples_received += self.input_buffer.len();
         self.input_buffer.append(&mut input.to_vec());
 
+        if self.samples_processed == 0 && self.input_buffer.len() < samples + samples / 2 {
+            return;
+        }
+
         if samples > self.input_buffer.len() {
             return;
         }
+        // println!("Current buffer length is {}", queue.size() / 4);
 
         let input_data = vec![self.input_buffer[0..samples].to_vec(); 1];
         match self.resampler.process_into_buffer(
