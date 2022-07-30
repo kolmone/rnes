@@ -71,6 +71,12 @@ impl Emulator {
                 Err(e) => return Err(eyre!(e)),
             };
             mode.refresh_rate = 60;
+            let desktop_mode = match video.desktop_display_mode(0) {
+                Ok(v) => v,
+                Err(e) => return Err(eyre!(e)),
+            };
+            mode.w = desktop_mode.w;
+            mode.h = desktop_mode.h;
             match window.set_fullscreen(sdl2::video::FullscreenType::True) {
                 Ok(_) => (),
                 Err(e) => return Err(eyre!(e)),
@@ -94,7 +100,8 @@ impl Emulator {
 
         let renderer = Renderer::new()?;
 
-        let canvas = window.into_canvas().present_vsync().build()?;
+        let mut canvas = window.into_canvas().present_vsync().build()?;
+        canvas.set_logical_size(256, 240)?;
         let tex_creator = canvas.texture_creator();
 
         Ok(Self {
