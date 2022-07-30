@@ -206,7 +206,10 @@ struct AudioHandler {
     resampler: FftFixedOut<f32>,
     samples_processed: usize,
     samples_received: usize,
-    bq: DirectForm2Transposed<f32>,
+    lp_14khz: DirectForm2Transposed<f32>,
+    hp_90hz: DirectForm2Transposed<f32>,
+    hp_440hz: DirectForm2Transposed<f32>,
+    average_buff: usize,
 }
 
 impl AudioHandler {
@@ -221,14 +224,40 @@ impl AudioHandler {
             Ok(v) => v,
             Err(_) => return Err(eyre!("Failed to build filter coefficients")),
         };
-        let bq = DirectForm2Transposed::<f32>::new(coeffs);
+        let lp_14khz = DirectForm2Transposed::<f32>::new(coeffs);
+
+        let omega = 2.0 * core::f32::consts::PI * 90.0 / 48000.0;
+        let alpha = 1.0 / (omega + 1.0);
+        let coeffs = Coefficients {
+            a1: -alpha,
+            a2: 0.0,
+            b0: alpha,
+            b1: -alpha,
+            b2: 0.0,
+        };
+        let hp_90hz = DirectForm2Transposed::<f32>::new(coeffs);
+
+        let omega = 2.0 * core::f32::consts::PI * 440.0 / 48000.0;
+        let alpha = 1.0 / (omega + 1.0);
+        let coeffs = Coefficients {
+            a1: -alpha,
+            a2: 0.0,
+            b0: alpha,
+            b1: -alpha,
+            b2: 0.0,
+        };
+        let hp_440hz = DirectForm2Transposed::<f32>::new(coeffs);
+
         Ok(Self {
             input_buffer: Vec::new(),
             output_data: vec![vec![0.0; buffer_len]; 1],
             resampler: fft_resampler,
             samples_processed: 0,
             samples_received: 0,
-            bq,
+            lp_14khz,
+            hp_90hz,
+            hp_440hz,
+            average_buff: 0,
         })
     }
 
@@ -244,7 +273,11 @@ impl AudioHandler {
         if samples > self.input_buffer.len() {
             return;
         }
-        // println!("Current buffer length is {}", queue.size() / 4);
+
+        // let buffer_len = queue.size();
+        self.average_buff -= self.average_buff / 100;
+        self.average_buff += queue.size() as usize / 100 / 4;
+        println!("Average buffer length is {}", self.average_buff);
 
         let input_data = vec![self.input_buffer[0..samples].to_vec(); 1];
         match self.resampler.process_into_buffer(
@@ -258,7 +291,9 @@ impl AudioHandler {
 
         let output: Vec<f32> = self.output_data[0]
             .iter()
-            .map(|x| self.bq.run(*x))
+            .map(|x| self.lp_14khz.run(*x))
+            .map(|x| self.hp_90hz.run(x))
+            .map(|x| self.hp_440hz.run(x))
             .collect();
 
         match queue.queue_audio(&output) {
