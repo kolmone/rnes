@@ -41,7 +41,7 @@ fn divide(dividend: f32, divisor: f32, zero_result: f32) -> f32 {
 
 impl Apu {
     pub fn new(tx: Sender<Vec<f32>>) -> Self {
-        Apu {
+        Self {
             pulse1: Pulse::new(0),
             pulse2: Pulse::new(1),
             triangle: Triangle::new(),
@@ -123,7 +123,7 @@ impl Apu {
         }
     }
 
-    pub fn irq_active(&self) -> bool {
+    pub const fn irq_active(&self) -> bool {
         self.irq | self.dmc.irq
     }
 
@@ -151,14 +151,14 @@ impl Apu {
         let tri_out = self.triangle.output as f32;
         let noise_out = self.noise.output as f32;
         let dmc_out = self.dmc.output as f32;
-        let pulse_out = divide(
+        let total_pulse_out = divide(
             95.88,
             divide(8128.0, pulse1_out + pulse2_out, -100.0) + 100.0,
             0.0,
         );
         let tnd_tmp = tri_out / 8227.0 + noise_out / 12241.0 + dmc_out / 22638.0;
         let tnd_out = divide(159.79, divide(1.0, tnd_tmp, -100.0) + 100.0, 0.0);
-        let output = pulse_out + tnd_out - 0.5;
+        let output = total_pulse_out + tnd_out - 0.5;
         self.output[self.output_idx] = output * 0.5;
 
         self.output_idx += 1;

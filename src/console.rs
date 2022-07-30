@@ -5,6 +5,7 @@ pub mod controller;
 pub mod cpu;
 pub mod ppu;
 
+use eyre::Result;
 use std::{
     thread::yield_now,
     time::{Duration, SystemTime},
@@ -22,13 +23,13 @@ pub struct Console<'a> {
 }
 
 impl<'a> Console<'a> {
-    pub fn new(fullscreen: bool, rom: Vec<u8>, emulator: &'a mut Emulator) -> Self {
-        let mut expected_timestamp = SystemTime::now() + Duration::from_nanos(16666667);
+    pub fn new(fullscreen: bool, rom: &[u8], emulator: &'a mut Emulator) -> Result<Self> {
+        let mut expected_timestamp = SystemTime::now() + Duration::from_nanos(16_666_667);
         let mut _prev_timestamp = SystemTime::now();
         let bus = Bus::new(
-            Cartridge::new(rom).unwrap(),
+            Cartridge::new(rom)?,
             emulator.audio_tx(),
-            move |ppu: &Ppu, controller: &mut Controller| {
+            move |ppu: &Ppu, controller: &mut Controller| -> Result<()> {
                 if !fullscreen {
                     let mut now = SystemTime::now();
                     if now < expected_timestamp {
@@ -40,15 +41,16 @@ impl<'a> Console<'a> {
                         println!("Arrived late");
                     }
                     _prev_timestamp = expected_timestamp;
-                    expected_timestamp += Duration::from_nanos(16666667);
+                    expected_timestamp += Duration::from_nanos(16_666_667);
                 }
-                emulator.render_screen(ppu);
+                emulator.render_screen(ppu)?;
                 emulator.handle_input(controller);
+                Ok(())
             },
         );
         let cpu = Cpu::new(bus);
 
-        Self { cpu }
+        Ok(Self { cpu })
     }
 
     pub fn reset(&mut self) {
@@ -56,10 +58,10 @@ impl<'a> Console<'a> {
         // todo: also reset bus with apu & ppu,
     }
 
-    pub fn run_with_callback<F>(&mut self, callback: F)
+    pub fn run_with_callback<F>(&mut self, callback: F) -> Result<()>
     where
         F: FnMut(&mut Cpu),
     {
-        self.cpu.run_with_callback(callback);
+        self.cpu.run_with_callback(callback)
     }
 }

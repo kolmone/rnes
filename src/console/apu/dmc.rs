@@ -1,3 +1,6 @@
+#![allow(clippy::range_plus_one)]
+#![allow(clippy::struct_excessive_bools)]
+
 use bitbash::bitfield;
 
 use crate::console::cartridge::Cartridge;
@@ -64,7 +67,7 @@ impl Dmc {
 
             self.bytes_remaining -= 1;
             if self.bytes_remaining == 0 && self.dmc_loop() {
-                self.start_sample = true
+                self.start_sample = true;
             } else if self.bytes_remaining == 0 {
                 self.irq = self.irq_enable();
             }
@@ -105,10 +108,6 @@ impl Dmc {
             self.timer -= 1;
         }
     }
-
-    pub fn _tick_half_frame(&mut self) {}
-
-    pub fn _tick_quarter_frame(&mut self) {}
 
     pub fn set_enable(&mut self, enable: bool) {
         self.enable = enable;

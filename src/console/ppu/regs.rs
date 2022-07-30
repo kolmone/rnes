@@ -1,3 +1,6 @@
+#![allow(clippy::use_self)]
+#![allow(clippy::range_plus_one)]
+
 use bitbash::bitfield;
 
 bitfield! {
@@ -61,23 +64,23 @@ bitfield! {
         pub offset: bool,
     }
 
-    pub field addr:             u16  = data[3..19];
-    pub field x_fine:           u8   = data[0..3];
-    pub field x_coarse:         u16  = data[3..8];
-    pub field y_coarse:         u16  = data[8..13];
-    pub field base_nametable:   u16  = data[13..15];
+    pub field addr:             u16  = data[3..=18];
+    pub field x_fine:           u8   = data[0..=2];
+    pub field x_coarse:         u16  = data[3..=7];
+    pub field y_coarse:         u16  = data[8..=12];
+    pub field base_nametable:   u16  = data[13..=14];
     pub field base_nametable_h: u8   = data[13];
     pub field base_nametable_v: u8   = data[14];
-    pub field y_fine:           u8   = data[15..18];
-    pub field addr_lo:          u8   = data[3..11];
-    pub field addr_hi:          u8   = data[11..19];
-    pub field x:                u8   = data[0..8];
-    pub field y:                u8   = data[15..18] ~ data[8..13];
+    pub field y_fine:           u8   = data[15..=17];
+    pub field addr_lo:          u8   = data[3..=10];
+    pub field addr_hi:          u8   = data[11..=18];
+    pub field x:                u8   = data[0..=7];
+    pub field y:                u8   = data[15..=17] ~ data[8..=12];
 }
 
 impl ScrollReg {
-    pub fn new() -> Self {
-        ScrollReg {
+    pub const fn new() -> Self {
+        Self {
             data: 0,
             offset: false,
         }

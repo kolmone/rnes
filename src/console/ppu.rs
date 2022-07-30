@@ -116,7 +116,7 @@ impl Ppu {
         self.cycle += 1;
         self.nmi_up = self.status.vblank() && self.ctrl.generate_nmi();
 
-        if self.scanline < Ppu::RENDER_LINES {
+        if self.scanline < Self::RENDER_LINES {
             if self.mask.show_bg() | self.mask.show_sprites() {
                 self.render_tick(cartridge);
             }
@@ -126,17 +126,17 @@ impl Ppu {
         }
 
         self.x += 1;
-        if self.x >= Ppu::CYCLES_PER_LINE {
+        if self.x >= Self::CYCLES_PER_LINE {
             self.x = 0;
             self.scanline += 1;
             match self.scanline {
-                Ppu::LAST_LINE => {
+                Self::LAST_LINE => {
                     self.scanline = -1;
                     self.status.0 = 0;
                     // println!("Vblank cleared");
                     self.frame = [0; 256 * 240];
                 }
-                Ppu::VBLANK_START_LINE => {
+                Self::VBLANK_START_LINE => {
                     self.status.set_vblank(true);
                     // println!("frame done after {} cycles", self.cycle);
                     self.cycle = 0;
@@ -148,6 +148,7 @@ impl Ppu {
         false
     }
 
+    #[allow(clippy::too_many_lines)]
     fn render_tick(&mut self, cartridge: &mut Cartridge) {
         let tile_fetch = matches!(self.x, 0..=255 | 320..=335);
 
@@ -172,7 +173,7 @@ impl Ppu {
                     (self.bg_pattern_shift >> 16) | ((self.pattern as u32) << 16);
                 // Repeat attribute 8 times
                 self.bg_attr_shift =
-                    (self.bg_attr_shift >> 16) + 0x55550000 * self.attribute as u32;
+                    (self.bg_attr_shift >> 16) + 0x5555_0000 * self.attribute as u32;
             }
             (2, true) => {
                 // Read attribute
@@ -448,7 +449,7 @@ impl Ppu {
             }
             0x3F00..=0x3FFF => {
                 self.read_buf = self.vram[cartridge.mirror_vram_addr(addr)];
-                self.palette[self.palette_idx(addr)]
+                self.palette[Self::palette_idx(addr)]
             }
             _ => panic!("Data read from unsupported PPU address at 0x{:x}", addr),
         }
@@ -470,7 +471,7 @@ impl Ppu {
         match addr {
             0..=0x1FFF => cartridge.write_ppu(addr, data),
             0x2000..=0x3EFF => self.vram[cartridge.mirror_vram_addr(addr)] = data,
-            0x3F00..=0x3FFF => self.palette[self.palette_idx(addr)] = data,
+            0x3F00..=0x3FFF => self.palette[Self::palette_idx(addr)] = data,
             _ => panic!("Data write to unsupported PPU address at 0x{:x}", addr),
         }
     }
@@ -488,7 +489,7 @@ impl Ppu {
         self.oam_addr = self.oam_addr.wrapping_add(1);
     }
 
-    fn palette_idx(&self, addr: u16) -> usize {
+    const fn palette_idx(addr: u16) -> usize {
         if addr >= 0x3f10 && addr % 4 == 0 {
             0
         } else {

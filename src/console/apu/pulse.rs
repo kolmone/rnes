@@ -1,3 +1,5 @@
+#![allow(clippy::range_plus_one)]
+
 use bitbash::bitfield;
 
 use super::common::Envelope;
@@ -92,7 +94,7 @@ impl Pulse {
         } else {
             self.timer -= 1;
         }
-        self.output = volume * Pulse::DUTY_TABLES[self.duty()][self.sequencer];
+        self.output = volume * Self::DUTY_TABLES[self.duty()][self.sequencer];
     }
 
     pub fn tick_half_frame(&mut self) {

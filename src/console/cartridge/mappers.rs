@@ -1,3 +1,6 @@
+use eyre::eyre;
+use eyre::Result;
+
 pub enum MapperEvent {}
 
 pub enum Mirroring {
@@ -36,7 +39,7 @@ pub fn get_mapper(
     chr_rom: Vec<u8>,
     chr_ram_size: usize,
     mirroring: Mirroring,
-) -> Result<Box<dyn Mapper>, String> {
+) -> Result<Box<dyn Mapper>> {
     println!("Using mapper {}", mapper);
 
     match mapper {
@@ -47,32 +50,32 @@ pub fn get_mapper(
             mirroring,
         ))),
         1 => Ok(Box::new(Mapper001::new(
-            prg_rom,
-            chr_rom,
+            &prg_rom,
+            &chr_rom,
             chr_ram_size,
             mirroring,
         ))),
-        _ => Err(format!("Unsupported mapper {}", mapper)),
+        _ => Err(eyre!("Unsupported mapper {}", mapper)),
     }
 }
 
 // Horizontal mirroring - first two 1kB areas map to first 1kB of VRAM
-fn mirror_horizontal(addr: u16) -> usize {
-    if addr & 0x800 != 0 {
-        ((addr | 0x400) % 0x800) as usize
-    } else {
+const fn mirror_horizontal(addr: u16) -> usize {
+    if addr & 0x800 == 0 {
         ((addr & !0x400) % 0x800) as usize
+    } else {
+        ((addr | 0x400) % 0x800) as usize
     }
 }
 
 // Vertical mirroring - first and third 1kB areas map to first 1kB of VRAM
 // Just fold address down to 0x0 - 0x7FF
-fn mirror_vertical(addr: u16) -> usize {
+const fn mirror_vertical(addr: u16) -> usize {
     (addr % 0x800) as usize
 }
 
 // Single screen mirroring is just the selected half of the memory
-fn mirror_single(addr: u16, screen_b: bool) -> usize {
+const fn mirror_single(addr: u16, screen_b: bool) -> usize {
     if screen_b {
         (addr % 0x400 + 0x400) as usize
     } else {
@@ -115,7 +118,7 @@ impl Mapper for Mapper000 {
 
     fn write_cpu(&mut self, addr: u16, data: u8) {
         if let 0x6000..=0x7FFF = addr {
-            self.prg_ram[(addr - 0x6000) as usize] = data
+            self.prg_ram[(addr - 0x6000) as usize] = data;
         }
     }
 
@@ -182,15 +185,15 @@ impl Mapper001 {
     const PRG_RAM_BANK_SIZE: usize = 8 * 1024;
     const PRG_RAM_BANKS: usize = 4;
 
-    fn new(prg_rom: Vec<u8>, chr_rom: Vec<u8>, _chr_ram_size: usize, mirroring: Mirroring) -> Self {
+    fn new(prg_rom: &[u8], chr_rom: &[u8], _chr_ram_size: usize, mirroring: Mirroring) -> Self {
         let prg_banks = prg_rom
             .chunks(Self::PRG_ROM_BANK_SIZE)
-            .map(|x| x.to_vec())
+            .map(<[u8]>::to_vec)
             .collect();
 
         let mut chr_banks = chr_rom
             .chunks(Self::CHR_ROM_BANK_SIZE)
-            .map(|x| x.to_vec())
+            .map(<[u8]>::to_vec)
             .collect::<Vec<Vec<u8>>>();
 
         if chr_banks.is_empty() {
@@ -302,13 +305,10 @@ impl Mapper for Mapper001 {
         match addr {
             0x6000..=0x7FFF => {
                 self.prg_ram_banks[self.prg_ram_bank][(addr as usize) % Self::PRG_RAM_BANK_SIZE] =
-                    data
+                    data;
             }
             0x8000.. => {
-                if data & 0x80 != 0 {
-                    self.bit_idx = 0;
-                    self.prg_mode = Mapper001PrgMode::FixLast;
-                } else {
+                if data & 0x80 == 0 {
                     self.buffer |= (data as usize & 0x01) << self.bit_idx;
                     self.bit_idx += 1;
                     if self.bit_idx == 5 {
@@ -316,6 +316,9 @@ impl Mapper for Mapper001 {
                         self.bit_idx = 0;
                         self.buffer = 0;
                     }
+                } else {
+                    self.bit_idx = 0;
+                    self.prg_mode = Mapper001PrgMode::FixLast;
                 }
             }
             _ => panic!("Unexpected CPU read from address {:X}", addr),
@@ -342,7 +345,7 @@ impl Mapper for Mapper001 {
             Mirroring::Horizontal => mirror_horizontal(addr),
             Mirroring::SingleScreenLower => mirror_single(addr, false),
             Mirroring::SingleScreenUpper => mirror_single(addr, true),
-            _ => panic!("Unsupported mirroring for Mapper001"),
+            Mirroring::FourScreen => panic!("Unsupported mirroring for Mapper001"),
         }
     }
 }

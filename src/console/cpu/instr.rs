@@ -25,19 +25,19 @@ pub struct Instruction {
 }
 
 impl Instruction {
-    pub fn new(
+    pub const fn new(
         opcode: u8,
         mnemonic: &'static str,
         bytes: u8,
         duration: u8,
         addressing_mode: AddressingMode,
     ) -> Self {
-        Instruction {
+        Self {
             opcode,
             mnemonic,
+            addressing_mode,
             bytes,
             duration,
-            addressing_mode,
         }
     }
 }

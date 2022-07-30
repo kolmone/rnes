@@ -1,3 +1,4 @@
+use eyre::Result;
 use std::sync::mpsc::Sender;
 
 use super::{
@@ -15,7 +16,7 @@ pub struct Bus<'call> {
     controller: Controller,
     cartridge: Cartridge,
 
-    game_callback: Box<dyn FnMut(&Ppu, &mut Controller) + 'call>,
+    game_callback: Box<dyn FnMut(&Ppu, &mut Controller) -> Result<()> + 'call>,
 }
 
 const RAM_START: u16 = 0x0000;
@@ -31,7 +32,7 @@ const RAM_ADDR_MIRROR_MASK: u16 = 0x07FF;
 impl<'call> Bus<'call> {
     pub fn new<F>(cartridge: Cartridge, apu_tx: Sender<Vec<f32>>, game_callback: F) -> Self
     where
-        F: FnMut(&Ppu, &mut controller::Controller) + 'call,
+        F: FnMut(&Ppu, &mut controller::Controller) -> Result<()> + 'call,
     {
         Self {
             ram: [0; 0x800],
@@ -44,16 +45,17 @@ impl<'call> Bus<'call> {
         }
     }
 
-    pub fn tick(&mut self, cycles: u8) {
+    pub fn tick(&mut self, cycles: u8) -> Result<()> {
         self.cycles += cycles as usize;
         for _ in 0..3 * cycles {
             if self.ppu.tick(&mut self.cartridge) {
-                (self.game_callback)(&self.ppu, &mut self.controller);
+                (self.game_callback)(&self.ppu, &mut self.controller)?;
             }
         }
         for _ in 0..cycles {
             self.apu.tick(&mut self.cartridge);
         }
+        Ok(())
     }
 
     pub fn nmi_active(&mut self) -> bool {
@@ -82,18 +84,19 @@ impl<'call> Bus<'call> {
     }
 
     pub fn read_u16(&mut self, addr: u16) -> u16 {
-        let lsb = self.read(addr) as u16;
-        let msb = self.read(addr.wrapping_add(1)) as u16;
-        (msb << 8) | lsb
+        let lo = self.read(addr) as u16;
+        let hi = self.read(addr.wrapping_add(1)) as u16;
+        (hi << 8) | lo
     }
 
-    pub fn write(&mut self, addr: u16, data: u8) {
+    pub fn write(&mut self, addr: u16, data: u8) -> Result<()> {
         match addr {
             RAM_START..=RAM_END => self.ram[(addr & RAM_ADDR_MIRROR_MASK) as usize] = data,
             PPU_REGISTERS_START..=PPU_REGISTERS_END => {
-                self.ppu.write(addr, data, &mut self.cartridge)
+                self.ppu.write(addr, data, &mut self.cartridge);
             }
-            OAM_DMA_ADDR => self.oam_dma(data),
+
+            OAM_DMA_ADDR => self.oam_dma(data)?,
             CONTROLLER1_ADDR => self.controller.write(data),
             0x4000..=0x4017 => self.apu.write(addr, data),
 
@@ -101,16 +104,17 @@ impl<'call> Bus<'call> {
 
             _ => println!("Write to unknown address 0x{:X}", addr),
         }
+        Ok(())
     }
 
-    fn oam_dma(&mut self, page: u8) {
+    fn oam_dma(&mut self, page: u8) -> Result<()> {
         // println!("Performing OAM DMA to address {:x}", self.ppu.oam_addr);
         let start_addr = (page as u16) << 8;
         for i in 0..256 {
             let oam_data = self.read(start_addr + i);
-            self.write(0x2004, oam_data);
-            self.tick(2);
+            self.write(0x2004, oam_data)?;
+            self.tick(2)?;
         }
-        self.tick(1);
+        self.tick(1)
     }
 }

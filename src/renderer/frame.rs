@@ -8,20 +8,20 @@ impl Frame {
     pub const HEIGHT: usize = 240;
 
     pub fn new() -> Self {
-        Frame {
-            data: vec![0; Frame::WIDTH * Frame::HEIGHT * 3],
+        Self {
+            data: vec![0; Self::WIDTH * Self::HEIGHT * 3],
         }
     }
 
     pub fn set_pixel(&mut self, x: usize, y: usize, rgb: (u8, u8, u8)) {
-        let base = (y * Frame::WIDTH + x) * 3;
+        let base = (y * Self::WIDTH + x) * 3;
         self.data[base] = rgb.0;
         self.data[base + 1] = rgb.1;
         self.data[base + 2] = rgb.2;
     }
 
     pub fn _pixel(&self, x: usize, y: usize) -> (u8, u8, u8) {
-        let base = (y * Frame::WIDTH + x) * 3;
+        let base = (y * Self::WIDTH + x) * 3;
         (self.data[base], self.data[base + 1], self.data[base + 2])
     }
 }

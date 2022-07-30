@@ -1,3 +1,5 @@
+#![allow(clippy::range_plus_one)]
+
 use bitbash::bitfield;
 
 use super::common::Envelope;
@@ -49,7 +51,7 @@ impl Noise {
         }
 
         if self.timer == 0 {
-            self.timer = Noise::TIMER_VALUES[self.period() as usize];
+            self.timer = Self::TIMER_VALUES[self.period() as usize];
             let feedback = if self.mode() {
                 (self.shift_register ^ (self.shift_register >> 6)) & 0x1
             } else {
@@ -99,7 +101,7 @@ impl Noise {
 
     pub fn write_r2(&mut self, data: u8) {
         self.r2 = data;
-        self.timer = Noise::TIMER_VALUES[self.period() as usize];
+        self.timer = Self::TIMER_VALUES[self.period() as usize];
     }
 
     pub fn write_r3(&mut self, data: u8) {

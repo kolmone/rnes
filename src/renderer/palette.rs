@@ -1,3 +1,5 @@
+use eyre::Result;
+
 #[rustfmt::skip]
 pub static _DEFAULT_PALETTE: [(u8,u8,u8); 64] = [
    (0x80, 0x80, 0x80), (0x00, 0x3D, 0xA6), (0x00, 0x12, 0xB0), (0x44, 0x00, 0x96), (0xA1, 0x00, 0x5E),
@@ -20,8 +22,8 @@ pub struct Palette {
 }
 
 impl Palette {
-    pub fn new(file: &str) -> Self {
-        let palette: Vec<u8> = std::fs::read(file).expect("Unable to open palette file");
+    pub fn new(file: &str) -> Result<Self> {
+        let palette: Vec<u8> = std::fs::read(file)?;
 
         let mut inst = Self {
             palette: [(0, 0, 0); 64],
@@ -31,6 +33,6 @@ impl Palette {
             inst.palette[i] = (palette[i * 3], palette[i * 3 + 1], palette[i * 3 + 2]);
         }
 
-        inst
+        Ok(inst)
     }
 }

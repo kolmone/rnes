@@ -17,7 +17,7 @@ pub struct Controller {
 }
 
 impl Controller {
-    pub fn new() -> Self {
+    pub const fn new() -> Self {
         Self {
             buttons: [false; 8],
             strobe: false,
@@ -25,6 +25,8 @@ impl Controller {
         }
     }
 
+    // False positive from clippy?
+    #[allow(clippy::only_used_in_recursion)]
     pub fn set_button_state(&mut self, button: Button, state: bool) {
         self.buttons[button as usize] = state;
     }

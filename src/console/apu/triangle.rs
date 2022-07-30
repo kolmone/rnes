@@ -1,3 +1,4 @@
+#![allow(clippy::range_plus_one)]
 
 use bitbash::bitfield;
 
@@ -57,7 +58,7 @@ impl Triangle {
         } else {
             self.timer -= 1;
         }
-        self.output = Triangle::WAVE[self.wave_ptr];
+        self.output = Self::WAVE[self.wave_ptr];
     }
 
     pub fn tick_half_frame(&mut self) {
