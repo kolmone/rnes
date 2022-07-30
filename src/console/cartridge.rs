@@ -10,7 +10,7 @@ impl Cartridge {
     const INES_TAG: [u8; 4] = [0x4E, 0x45, 0x53, 0x1A];
     const PRG_ROM_BANK_SIZE: usize = 0x4000;
     const CHR_ROM_BANK_SIZE: usize = 0x2000;
-    const PRG_RAM_BANK_SIZE: usize = 0x2000;
+    const _PRG_RAM_BANK_SIZE: usize = 0x2000;
     const CHR_RAM_BANK_SIZE: usize = 0x2000;
 
     pub fn new(rom: Vec<u8>) -> Result<Self, String> {
