@@ -31,7 +31,7 @@ fn run_rom(file: &str, do_trace: bool, fullscreen: bool) -> Result<()> {
         std::fs::read(file).wrap_err_with(|| format!("Failed to open ROM file {}", file))?;
 
     let mut emulator = emulator::Emulator::new(fullscreen)?;
-    let mut console = console::Console::new(fullscreen, &rom, &mut emulator)?;
+    let mut console = console::Console::new(&rom, &mut emulator)?;
 
     console.reset();
 

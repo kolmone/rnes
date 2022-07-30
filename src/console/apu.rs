@@ -7,7 +7,6 @@ mod triangle;
 use dmc::Dmc;
 use noise::Noise;
 use pulse::Pulse;
-use std::sync::mpsc::Sender;
 use triangle::Triangle;
 
 use super::cartridge::Cartridge;
@@ -19,9 +18,8 @@ pub struct Apu {
     noise: Noise,
     dmc: Dmc,
 
-    output: Vec<f32>,
+    pub output: Vec<f32>,
     output_idx: usize,
-    tx: Sender<Vec<f32>>,
 
     cycle: usize,
 
@@ -40,16 +38,15 @@ fn divide(dividend: f32, divisor: f32, zero_result: f32) -> f32 {
 }
 
 impl Apu {
-    pub fn new(tx: Sender<Vec<f32>>) -> Self {
+    pub fn new() -> Self {
         Self {
             pulse1: Pulse::new(0),
             pulse2: Pulse::new(1),
             triangle: Triangle::new(),
             noise: Noise::new(),
             dmc: Dmc::new(),
-            output: vec![0.0; 10000],
+            output: vec![0.0; crate::APU_FREQ / 60],
             output_idx: 0,
-            tx,
             cycle: 0,
             irq_disable: false,
             irq: false,
@@ -127,7 +124,7 @@ impl Apu {
         self.irq | self.dmc.irq
     }
 
-    pub fn tick(&mut self, cartridge: &mut Cartridge) {
+    pub fn tick(&mut self, cartridge: &mut Cartridge) -> bool {
         self.cycle += 1;
 
         self.tick_frame_counter();
@@ -163,12 +160,10 @@ impl Apu {
 
         self.output_idx += 1;
         if self.output_idx >= self.output.len() {
-            match self.tx.send(self.output.clone()) {
-                Ok(()) => (),
-                Err(e) => panic!("Send error: {}", e),
-            }
             self.output_idx = 0;
+            return true;
         }
+        false
     }
 
     fn tick_frame_counter(&mut self) {

@@ -1,14 +1,9 @@
+use crate::emulator::Emulator;
+
+use super::{apu::Apu, cartridge::Cartridge, controller::Controller, ppu::Ppu};
 use eyre::Result;
-use std::sync::mpsc::Sender;
 
-use super::{
-    apu::Apu,
-    cartridge::Cartridge,
-    controller::{self, Controller},
-    ppu::Ppu,
-};
-
-pub struct Bus<'call> {
+pub struct Bus<'a> {
     ram: [u8; 0x800],
     ppu: Ppu,
     apu: Apu,
@@ -16,7 +11,7 @@ pub struct Bus<'call> {
     controller: Controller,
     cartridge: Cartridge,
 
-    game_callback: Box<dyn FnMut(&Ppu, &mut Controller) -> Result<()> + 'call>,
+    emulator: &'a mut Emulator,
 }
 
 const RAM_START: u16 = 0x0000;
@@ -29,31 +24,31 @@ const CONTROLLER2_ADDR: u16 = 0x4017;
 
 const RAM_ADDR_MIRROR_MASK: u16 = 0x07FF;
 
-impl<'call> Bus<'call> {
-    pub fn new<F>(cartridge: Cartridge, apu_tx: Sender<Vec<f32>>, game_callback: F) -> Self
-    where
-        F: FnMut(&Ppu, &mut controller::Controller) -> Result<()> + 'call,
-    {
+impl<'a> Bus<'a> {
+    pub fn new(cartridge: Cartridge, emulator: &'a mut Emulator) -> Self {
         Self {
             ram: [0; 0x800],
             ppu: Ppu::new(),
-            apu: Apu::new(apu_tx),
+            apu: Apu::new(),
             controller: Controller::new(),
             cycles: 0,
             cartridge,
-            game_callback: Box::from(game_callback),
+            emulator,
         }
     }
 
     pub fn tick(&mut self, cycles: u8) -> Result<()> {
         self.cycles += cycles as usize;
-        for _ in 0..3 * cycles {
-            if self.ppu.tick(&mut self.cartridge) {
-                (self.game_callback)(&self.ppu, &mut self.controller)?;
+        for _ in 0..cycles {
+            if self.apu.tick(&mut self.cartridge) {
+                self.emulator.handle_audio(&self.apu);
             }
         }
-        for _ in 0..cycles {
-            self.apu.tick(&mut self.cartridge);
+        for _ in 0..3 * cycles {
+            if self.ppu.tick(&mut self.cartridge) {
+                self.emulator.render_screen(&self.ppu)?;
+                self.emulator.handle_input(&mut self.controller);
+            }
         }
         Ok(())
     }
