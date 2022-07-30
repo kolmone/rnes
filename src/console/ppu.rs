@@ -2,7 +2,7 @@ mod regs;
 
 use regs::{ControllerReg, MaskReg, StatusReg};
 
-use crate::cartridge::Cartridge;
+use super::cartridge::Cartridge;
 
 use self::regs::ScrollReg;
 

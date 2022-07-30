@@ -16,8 +16,8 @@ use sdl2::{
 };
 
 use crate::{
-    controller::{Button, Controller},
-    ppu::Ppu,
+    console::controller::{Button, Controller},
+    console::ppu::Ppu,
     renderer::Renderer,
 };
 

@@ -1,18 +1,12 @@
 #![warn(trivial_numeric_casts)]
 #![allow(clippy::bad_bit_mask)]
 
-mod apu;
-mod bus;
-mod cartridge;
 mod console;
-mod controller;
-mod cpu;
 mod emulator;
-mod ppu;
 mod renderer;
 
-use cpu::Cpu;
-use ppu::Ppu;
+use console::cpu::Cpu;
+use console::ppu::Ppu;
 use std::env;
 
 // 21441960 / 12 = 1786830 - if NES ran at exactly 60 Hz

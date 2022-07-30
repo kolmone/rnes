@@ -1,6 +1,6 @@
 use std::sync::mpsc::Sender;
 
-use crate::{
+use super::{
     apu::Apu,
     cartridge::Cartridge,
     controller::{self, Controller},

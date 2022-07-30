@@ -10,7 +10,7 @@ use pulse::Pulse;
 use std::sync::mpsc::Sender;
 use triangle::Triangle;
 
-use crate::cartridge::Cartridge;
+use super::cartridge::Cartridge;
 
 pub struct Apu {
     pulse1: Pulse,

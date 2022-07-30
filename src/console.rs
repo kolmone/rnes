@@ -1,11 +1,21 @@
+mod apu;
+mod bus;
+mod cartridge;
+pub mod controller;
+pub mod cpu;
+pub mod ppu;
+
 use std::{
     thread::yield_now,
     time::{Duration, SystemTime},
 };
 
-use crate::{
-    bus::Bus, cartridge::Cartridge, controller::Controller, cpu::Cpu, emulator::Emulator, ppu::Ppu,
-};
+use crate::emulator::Emulator;
+use bus::Bus;
+use cartridge::Cartridge;
+use controller::Controller;
+use cpu::Cpu;
+use ppu::Ppu;
 
 pub struct Console<'a> {
     cpu: Cpu<'a>,

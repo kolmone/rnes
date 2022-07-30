@@ -1,6 +1,6 @@
 use bitbash::bitfield;
 
-use crate::cartridge::Cartridge;
+use crate::console::cartridge::Cartridge;
 
 bitfield! {
     #[derive(Default)]

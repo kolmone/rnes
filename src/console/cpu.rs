@@ -1,6 +1,6 @@
 mod instr;
 
-use crate::bus::Bus;
+use super::bus::Bus;
 use bitbash::bitfield;
 use instr::AddressingMode;
 
@@ -745,8 +745,8 @@ impl<'a> Cpu<'a> {
 #[cfg(test)]
 mod test {
     use super::*;
-    use crate::cartridge::mappers::*;
-    use crate::cartridge::Cartridge;
+    use crate::console::cartridge::mappers::*;
+    use crate::console::cartridge::Cartridge;
     use std::sync::mpsc;
 
     fn dummy_cart() -> Cartridge {
