@@ -38,8 +38,8 @@ const RESET_ADDR: u16 = 0xFFFC;
 const STACK_PAGE: u16 = 0x0100;
 
 impl<'a> Cpu<'a> {
-    pub fn new(bus: Bus) -> Cpu {
-        Cpu {
+    pub fn new(bus: Bus<'a>) -> Self {
+        Self {
             register_a: 0,
             register_x: 0,
             register_y: 0,
@@ -257,7 +257,13 @@ impl<'a> Cpu<'a> {
                 "BMI" => self.bmi(),
                 "BNE" => self.bne(),
                 "BPL" => self.bpl(),
-                "BRK" => if self.quit_on_brk { return } else { self.brk() } ,
+                "BRK" => {
+                    if self.quit_on_brk {
+                        return;
+                    } else {
+                        self.brk()
+                    }
+                }
                 "BVC" => self.bvc(),
                 "BVS" => self.bvs(),
                 "CLC" => self.status.set_carry(false),
@@ -739,13 +745,14 @@ impl<'a> Cpu<'a> {
 #[cfg(test)]
 mod test {
     use super::*;
-    use crate::cartridge::Cartridge;
     use crate::cartridge::mappers::*;
+    use crate::cartridge::Cartridge;
     use std::sync::mpsc;
 
     fn dummy_cart() -> Cartridge {
         Cartridge {
-            mapper: get_mapper(0, vec![0; 0x4000], vec![0; 0x2000], 0, Mirroring::Vertical).unwrap()
+            mapper: get_mapper(0, vec![0; 0x4000], vec![0; 0x2000], 0, Mirroring::Vertical)
+                .unwrap(),
         }
     }
 

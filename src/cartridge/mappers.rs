@@ -229,7 +229,7 @@ impl Mapper001 {
                     Mapper001PrgMode::FixLast => self.prg_bank0 = bank,
                 }
             }
-            _ => unreachable!()
+            _ => unreachable!(),
         }
     }
 
@@ -239,13 +239,13 @@ impl Mapper001 {
             1 => Mirroring::SingleScreenUpper,
             2 => Mirroring::Vertical,
             3 => Mirroring::Horizontal,
-            _ => unreachable!()
+            _ => unreachable!(),
         };
         self.prg_mode = match (data >> 2) & 0x3 {
             0 | 1 => Mapper001PrgMode::SwitchBoth,
             2 => Mapper001PrgMode::FixFirst,
             3 => Mapper001PrgMode::FixLast,
-            _ => unreachable!()
+            _ => unreachable!(),
         };
         self.chr_independent_banks = data & 0x10 != 0;
     }
