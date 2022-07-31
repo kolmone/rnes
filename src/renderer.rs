@@ -1,11 +1,9 @@
-mod frame;
 mod palette;
 
 use crate::Ppu;
+use egui_sdl2_gl::egui::Color32;
 use eyre::Result;
-use frame::Frame;
 use palette::Palette;
-use sdl2::{rect::Rect, render::Texture};
 
 pub struct Renderer {
     palette: Palette,
@@ -18,13 +16,13 @@ impl Renderer {
         })
     }
 
-    pub fn render_texture(&mut self, ppu: &Ppu, texture: &mut Texture) -> Result<()> {
-        let mut frame = Frame::new();
+    pub fn render_texture(&mut self, ppu: &Ppu) -> Vec<Color32> {
+        let mut texture = vec![Color32::DARK_RED; 256 * 240];
         for (idx, pixel) in ppu.frame.iter().enumerate() {
-            frame.set_pixel(idx % 256, idx / 256, self.palette.palette[*pixel as usize]);
+            let (r, g, b) = self.palette.palette[*pixel as usize];
+            texture[idx] = Color32::from_rgb(r, g, b);
         }
 
-        texture.update(Rect::new(0, 0, 256, 240), &frame.data, 256 * 3)?;
-        Ok(())
+        texture
     }
 }

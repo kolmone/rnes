@@ -786,7 +786,7 @@ mod test {
     use crate::console::cartridge::mappers::{get_mapper, Mirroring};
     use crate::console::cartridge::Cartridge;
 
-    fn dummy_cart() -> Cartridge {
+    fn _dummy_cart() -> Cartridge {
         Cartridge {
             mapper: get_mapper(0, vec![0; 0x4000], vec![0; 0x2000], 0, Mirroring::Vertical)
                 .unwrap(),
@@ -794,7 +794,8 @@ mod test {
     }
 
     fn dummy_bus() -> Bus<'static> {
-        Bus::new(dummy_cart())
+        // Bus::new(dummy_cart())
+        todo!()
     }
 
     #[test]
