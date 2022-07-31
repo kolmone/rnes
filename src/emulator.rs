@@ -6,7 +6,10 @@ use std::time::SystemTime;
 use biquad::{Biquad, Coefficients, DirectForm2Transposed, ToHertz, Q_BUTTERWORTH_F32};
 use eyre::eyre;
 use eyre::Result;
-use rubato::{FftFixedOut, VecResampler};
+use rubato::InterpolationParameters;
+use rubato::InterpolationType;
+use rubato::WindowFunction;
+use rubato::{Resampler, SincFixedIn};
 use sdl2::{
     audio::{AudioQueue, AudioSpecDesired},
     event::Event,
@@ -54,7 +57,7 @@ impl Emulator {
         let renderer = Renderer::new()?;
         let audio_device = Self::init_audio(&sdl)?;
 
-        let audio_handler = AudioHandler::new(48000, 48000 / 120)?;
+        let audio_handler = AudioHandler::new(48000, crate::APU_FREQ / 120)?;
 
         Ok(Self {
             event_pump,
@@ -194,16 +197,15 @@ impl Emulator {
         Ok(())
     }
 
-    pub fn handle_audio(&mut self, apu: &Apu) {
+    pub fn handle_audio(&mut self, apu: &Apu) -> Result<()> {
         self.audio_handler
-            .process(&apu.output, &mut self.audio_device);
+            .process(&apu.output, &mut self.audio_device)
     }
 }
 
 struct AudioHandler {
-    input_buffer: Vec<f32>,
     output_data: Vec<Vec<f32>>,
-    resampler: FftFixedOut<f32>,
+    resampler: SincFixedIn<f32>,
     samples_processed: usize,
     samples_received: usize,
     lp_14khz: DirectForm2Transposed<f32>,
@@ -213,8 +215,31 @@ struct AudioHandler {
 }
 
 impl AudioHandler {
-    fn new(out_freq: usize, buffer_len: usize) -> Result<Self> {
-        let fft_resampler = FftFixedOut::new(crate::APU_FREQ, out_freq, buffer_len, 1, 1)?;
+    const TARGET_BUFFER_LEN: usize = 800;
+    const BUFFER_LEN_TOLERANCE: usize = 50;
+    const BUFFER_LOW_LIMIT: usize = Self::TARGET_BUFFER_LEN - Self::BUFFER_LEN_TOLERANCE;
+    const BUFFER_HIGH_LIMIT: usize = Self::TARGET_BUFFER_LEN + Self::BUFFER_LEN_TOLERANCE;
+
+    const RATIO_FILL: f64 = 1.003;
+    const RATIO_EMPTY: f64 = 1.0 / Self::RATIO_FILL;
+    const RATIO_NORMAL: f64 = 1.0;
+
+    fn new(out_freq: usize, input_len: usize) -> Result<Self> {
+        let params = InterpolationParameters {
+            sinc_len: 256,
+            f_cutoff: 0.95,
+            interpolation: InterpolationType::Linear,
+            oversampling_factor: 256,
+            window: WindowFunction::BlackmanHarris2,
+        };
+        let resampler = SincFixedIn::new(
+            out_freq as f64 / crate::APU_FREQ as f64,
+            1.01,
+            params,
+            input_len,
+            1,
+        )?;
+
         let coeffs = match Coefficients::<f32>::from_params(
             biquad::Type::SinglePoleLowPass,
             48.khz(),
@@ -249,9 +274,8 @@ impl AudioHandler {
         let hp_440hz = DirectForm2Transposed::<f32>::new(coeffs);
 
         Ok(Self {
-            input_buffer: Vec::new(),
-            output_data: vec![vec![0.0; buffer_len]; 1],
-            resampler: fft_resampler,
+            output_data: vec![vec![0.0; resampler.output_frames_max()]; 1],
+            resampler,
             samples_processed: 0,
             samples_received: 0,
             lp_14khz,
@@ -261,33 +285,38 @@ impl AudioHandler {
         })
     }
 
-    fn process(&mut self, input: &[f32], queue: &mut AudioQueue<f32>) {
+    fn process(&mut self, input: &[f32], queue: &mut AudioQueue<f32>) -> Result<()> {
+        if self.samples_received == 0 {
+            match queue.queue_audio(&[0.0; 1200]) {
+                Ok(_) => (),
+                Err(e) => return Err(eyre!(e)),
+            }
+        }
+
         let samples = self.resampler.input_frames_next();
-        self.samples_received += self.input_buffer.len();
-        self.input_buffer.append(&mut input.to_vec());
+        self.samples_received += input.len();
 
-        if self.samples_processed == 0 && self.input_buffer.len() < samples + samples / 2 {
-            return;
-        }
-
-        if samples > self.input_buffer.len() {
-            return;
-        }
-
-        // let buffer_len = queue.size();
         self.average_buff -= self.average_buff / 100;
         self.average_buff += queue.size() as usize / 100 / 4;
-        println!("Average buffer length is {}", self.average_buff);
+        // println!("Average buffer length is {}", self.average_buff);
 
-        let input_data = vec![self.input_buffer[0..samples].to_vec(); 1];
-        match self.resampler.process_into_buffer(
-            &input_data,
-            &mut self.output_data,
-            Some(&[true; 1]),
-        ) {
-            Ok(()) => (),
-            Err(e) => panic!("Resampling error {}", e),
+        match self.average_buff {
+            0..=Self::BUFFER_LOW_LIMIT => self
+                .resampler
+                .set_resample_ratio_relative(Self::RATIO_FILL)?,
+            Self::BUFFER_HIGH_LIMIT.. => self
+                .resampler
+                .set_resample_ratio_relative(Self::RATIO_EMPTY)?,
+            _ => self
+                .resampler
+                .set_resample_ratio_relative(Self::RATIO_NORMAL)?,
         }
+
+        // println!("next samples is {}", self.resampler.output_frames_next());
+
+        self.resampler
+            .process_into_buffer(&[input; 1], &mut self.output_data, Some(&[true; 1]))?;
+        // println!("Out buffer is {} samples", self.output_data[0].len());
 
         let output: Vec<f32> = self.output_data[0]
             .iter()
@@ -297,11 +326,11 @@ impl AudioHandler {
             .collect();
 
         match queue.queue_audio(&output) {
-            Ok(()) => (),
-            Err(e) => panic!("Error queueing audio {}", e),
+            Ok(_) => (),
+            Err(e) => return Err(eyre!(e)),
         }
 
-        self.input_buffer.drain(0..samples);
         self.samples_processed += samples;
+        Ok(())
     }
 }

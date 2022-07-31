@@ -41,7 +41,7 @@ impl<'a> Bus<'a> {
         self.cycles += cycles as usize;
         for _ in 0..cycles {
             if self.apu.tick(&mut self.cartridge) {
-                self.emulator.handle_audio(&self.apu);
+                self.emulator.handle_audio(&self.apu)?;
             }
         }
         for _ in 0..3 * cycles {
