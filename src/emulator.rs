@@ -189,7 +189,7 @@ impl Emulator {
             } else {
                 println!("Arrived late");
             }
-            self.next_render_time += Duration::from_nanos(16_666_666);
+            self.next_render_time = now + Duration::from_nanos(16_666_666);
         }
 
         self.canvas.present();
@@ -298,7 +298,7 @@ impl AudioHandler {
 
         self.average_buff -= self.average_buff / 100;
         self.average_buff += queue.size() as usize / 100 / 4;
-        // println!("Average buffer length is {}", self.average_buff);
+        println!("Average buffer length is {}", self.average_buff);
 
         match self.average_buff {
             0..=Self::BUFFER_LOW_LIMIT => self
