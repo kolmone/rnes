@@ -5,13 +5,11 @@ use std::time::SystemTime;
 
 use biquad::{Biquad, Coefficients, DirectForm2Transposed, ToHertz, Q_BUTTERWORTH_F32};
 use egui_sdl2_gl::egui;
-use egui_sdl2_gl::egui::plot::Line;
-use egui_sdl2_gl::egui::plot::Plot;
-use egui_sdl2_gl::egui::plot::Values;
 use egui_sdl2_gl::egui::Color32;
 use egui_sdl2_gl::egui::CtxRef;
-use egui_sdl2_gl::egui::Order;
+use egui_sdl2_gl::egui::Frame;
 use egui_sdl2_gl::egui::TextureId;
+use egui_sdl2_gl::egui::Vec2;
 use egui_sdl2_gl::painter::Painter;
 use egui_sdl2_gl::DpiScaling;
 use egui_sdl2_gl::EguiStateHandler;
@@ -22,6 +20,7 @@ use rubato::InterpolationParameters;
 use rubato::InterpolationType;
 use rubato::WindowFunction;
 use rubato::{Resampler, SincFixedIn};
+use sdl2::mouse::MouseUtil;
 use sdl2::video::FullscreenType;
 use sdl2::video::GLContext;
 use sdl2::video::GLProfile;
@@ -54,6 +53,7 @@ pub struct Emulator {
     event_pump: EventPump,
     keymap: HashMap<Keycode, Button>,
     _gl_context: GLContext,
+    mouse: MouseUtil,
     window: Window,
     renderer: Renderer,
     audio_handler: AudioHandler,
@@ -63,6 +63,8 @@ pub struct Emulator {
     egui_painter: Painter,
     egui_state: EguiStateHandler,
     egui_texture: TextureId,
+    menu_timeout_start: SystemTime,
+    prev_cursor_pos: egui::Pos2,
 }
 
 impl Emulator {
@@ -78,10 +80,13 @@ impl Emulator {
 
         let audio_handler = AudioHandler::new(48000, crate::APU_FREQ / 120)?;
 
+        let mouse = sdl.mouse();
+
         Ok(Self {
             event_pump,
             keymap: Self::build_keymap(),
             _gl_context: gl_context,
+            mouse,
             window,
             renderer,
             audio_device,
@@ -91,6 +96,8 @@ impl Emulator {
             egui_painter,
             egui_state,
             egui_texture,
+            menu_timeout_start: SystemTime::now(),
+            prev_cursor_pos: egui::Pos2::default(),
         })
     }
 
@@ -115,7 +122,7 @@ impl Emulator {
         gl_attr.set_context_version(3, 2);
 
         let mut window = video
-            .window("N3S", 256 * 3, 240 * 3)
+            .window("rn3s", 256 * 3, 240 * 3)
             .opengl()
             .resizable()
             .build()?;
@@ -140,7 +147,7 @@ impl Emulator {
         }
 
         let (mut painter, egui_state) =
-            egui_sdl2_gl::with_sdl2(&window, ShaderVersion::Default, DpiScaling::Default);
+            egui_sdl2_gl::with_sdl2(&window, ShaderVersion::Default, DpiScaling::Custom(1.25));
         let egui_context = egui::CtxRef::default();
         let srgba: Vec<Color32> = vec![Color32::TRANSPARENT; 256 * 240];
         let egui_texture = painter.new_user_texture((256, 240), &srgba, false);
@@ -192,11 +199,17 @@ impl Emulator {
                 Event::KeyDown { keycode, .. } => {
                     if let Some(key) = self.keymap.get(&keycode.unwrap_or(Keycode::Ampersand)) {
                         controller.set_button_state(*key, true);
+                    } else {
+                        self.egui_state
+                            .process_input(&self.window, event, &mut self.egui_painter);
                     }
                 }
                 Event::KeyUp { keycode, .. } => {
                     if let Some(key) = self.keymap.get(&keycode.unwrap_or(Keycode::Ampersand)) {
                         controller.set_button_state(*key, false);
+                    } else {
+                        self.egui_state
+                            .process_input(&self.window, event, &mut self.egui_painter);
                     }
                 }
                 _ => {
@@ -208,7 +221,7 @@ impl Emulator {
     }
 
     const ASPECT_RATIO: f32 = 256.0 / 240.0;
-    fn get_game_pos(&self) -> (f32, f32, egui::Pos2) {
+    fn _get_game_pos(&self) -> (f32, f32, egui::Pos2) {
         let (ww, wh) = self.window.size();
         if (ww as f32) / (wh as f32) > Self::ASPECT_RATIO {
             // Screen wider than default
@@ -225,6 +238,21 @@ impl Emulator {
         }
     }
 
+    fn scale_game(available_space: Vec2) -> Vec2 {
+        let (w, h) = (available_space.x, available_space.y);
+        if w / h > Self::ASPECT_RATIO {
+            // Screen wider than default
+            let w = h * Self::ASPECT_RATIO;
+            // let pos = egui::pos2((ww as f32 - w) / 2.0, 0.0);
+            Vec2::new(w, h)
+        } else {
+            // Screen taller than default
+            let h = w / Self::ASPECT_RATIO;
+            // let pos = egui::pos2(0.0, (wh as f32 - h) / 2.0);
+            Vec2::new(w, h)
+        }
+    }
+
     pub fn render_screen(&mut self, ppu: &Ppu) {
         // let start_time = SystemTime::now();
         self.egui_context.begin_frame(self.egui_state.input.take());
@@ -235,27 +263,66 @@ impl Emulator {
             gl::Clear(gl::COLOR_BUFFER_BIT);
         }
 
-        let (width, height, pos) = self.get_game_pos();
-
         let texture = self.renderer.render_texture(ppu);
         self.egui_painter
             .update_user_texture_data(self.egui_texture, &texture);
 
         // Draw the area containing the game
-        egui::Area::new("game")
-            .fixed_pos(pos)
-            .order(Order::Background)
-            .show(&self.egui_context, |ui| {
-                ui.image(self.egui_texture, egui::vec2(width, height));
-            });
+        // egui::Area::new("game")
+        //     .fixed_pos(pos)
+        //     .order(Order::Background)
+        //     .show(&self.egui_context, |ui| {
+        //         ui.image(self.egui_texture, egui::vec2(width, height));
+        //     });
 
         // Draw audio buffer depth graph
-        egui::Window::new("audio buffer").show(&self.egui_context, |ui| {
-            let line = Line::new(Values::from_ys_f32(&self.audio_handler.average_history));
-            Plot::new("buffer depth")
-                .view_aspect(1.0)
-                .show(ui, |plot_ui| plot_ui.line(line));
-        });
+        // egui::Window::new("audio buffer").show(&self.egui_context, |ui| {
+        //     let line = Line::new(Values::from_ys_f32(&self.audio_handler.average_history));
+        //     Plot::new("buffer depth")
+        //         .view_aspect(1.0)
+        //         .show(ui, |plot_ui| plot_ui.line(line));
+        // });
+
+        egui::CentralPanel::default()
+            .frame(Frame::none())
+            .show(&self.egui_context, |ui| {
+                ui.centered_and_justified(|ui| {
+                    ui.image(self.egui_texture, Self::scale_game(ui.available_size()));
+                });
+            });
+
+        let cursor_pos = self.egui_state.pointer_pos;
+        if cursor_pos != self.prev_cursor_pos {
+            self.prev_cursor_pos = cursor_pos;
+            self.menu_timeout_start = SystemTime::now();
+        }
+
+        let elapsed = match SystemTime::now().duration_since(self.menu_timeout_start) {
+            Ok(val) => val,
+            Err(_) => Duration::from_secs(0),
+        };
+
+        let hide_panel = elapsed > Duration::from_secs(2);
+
+        self.mouse.show_cursor(!hide_panel);
+
+        if !hide_panel {
+            egui::TopBottomPanel::top("top panel").show(&self.egui_context, |ui| {
+                egui::menu::bar(ui, |ui| {
+                    ui.menu_button("File", |ui| {
+                        if ui.button("Load ROM").clicked() {
+                            println!("Loading ROM!");
+                        }
+                        if ui.button("Reset").clicked() {
+                            println!("Resetting!");
+                        }
+                        if ui.button("Quit").clicked() {
+                            std::process::exit(0);
+                        }
+                    });
+                });
+            });
+        }
 
         let (egui_output, paint_cmds) = self.egui_context.end_frame();
         self.egui_state.process_output(&self.window, &egui_output);
@@ -270,10 +337,6 @@ impl Emulator {
         // );
 
         let minimized = self.window.window_flags() & 64 != 0;
-        // if minimized {
-        //     println!("Minimized");
-        // }
-
         if self.window.fullscreen_state() != FullscreenType::True || minimized {
             let mut now = SystemTime::now();
             if now < self.next_render_time {
