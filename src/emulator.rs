@@ -298,7 +298,7 @@ impl AudioHandler {
 
         self.average_buff -= self.average_buff / 100;
         self.average_buff += queue.size() as usize / 100 / 4;
-        println!("Average buffer length is {}", self.average_buff);
+        // println!("Average buffer length is {}", self.average_buff);
 
         match self.average_buff {
             0..=Self::BUFFER_LOW_LIMIT => self
