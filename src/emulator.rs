@@ -491,10 +491,10 @@ impl AudioHandler {
             .map(|x| self.hp_440hz.run(x))
             .collect();
 
-        // match queue.queue_audio(&output) {
-        //     Ok(_) => (),
-        //     Err(e) => return Err(eyre!(e)),
-        // }
+        match queue.queue_audio(&output) {
+            Ok(_) => (),
+            Err(e) => return Err(eyre!(e)),
+        }
 
         self.samples_processed += samples;
         Ok(())
