@@ -1,47 +1,33 @@
-#![allow(clippy::range_plus_one)]
-
-use bitbash::bitfield;
+use crate::macros::bit_bool;
 
 use super::common::Envelope;
 
-bitfield! {
-    #[derive(Default)]
-    pub struct Pulse{
-        r0: u8,
-        r1: u8,
-        r2: u8,
-        r3: u8,
-        idx: u8,
-        timer: u16,
-        period: u16,
-        target_period: u16,
-        sequencer: usize,
-        sweep_period: i8,
-        sw_reload: bool,
-        enable: bool,
+#[allow(clippy::struct_excessive_bools)]
+#[derive(Default)]
+pub struct Pulse {
+    idx: u8,
+    timer: u16,
+    period: u16,
+    target_period: u16,
+    sequencer: usize,
+    sweep_period: i8,
+    sw_reload: bool,
+    enable: bool,
 
-        env: Envelope,
-        pub length_counter: u8,
+    env: Envelope,
+    pub length_counter: u8,
 
-        pub output: u8,
-    }
+    pub output: u8,
 
-    field volume: u8 = r0[0..4];
-    field envelope: u8 = r0[0..4];
-    field const_vol: bool = r0[4];
-    field env_loop: bool = r0[5];
-    field counter_halt: bool = r0[5];
-    field duty: usize = r0[6..8];
-
-    field sw_shift: u8 = r1[0..3];
-    field sw_negate: bool = r1[3];
-    field sw_period: u8 = r1[4..7];
-    field sw_enable: bool = r1[7];
-
-    field timer_lo: u8 = r2[0..8];
-    field timer_hi: u8 = r3[0..3];
-    field timer: u16 = r2[0..8] ~ r3[0..3];
-    field counter_load: u8 = r3[3..8];
+    volume: u8,
+    const_vol: bool,
+    counter_halt: bool,
+    duty: usize,
+    sw_shift: u8,
+    sw_negate: bool,
+    sw_period: u8,
+    sw_enable: bool,
+    timer_start: u16,
 }
 
 impl Pulse {
@@ -65,8 +51,8 @@ impl Pulse {
             return;
         }
 
-        let period_shifted = self.period >> self.sw_shift();
-        self.target_period = if self.sw_negate() {
+        let period_shifted = self.period >> self.sw_shift;
+        self.target_period = if self.sw_negate {
             if self.idx == 0 {
                 self.period - period_shifted - 1
             } else {
@@ -78,8 +64,8 @@ impl Pulse {
 
         let volume = if self.length_counter == 0 || self.period < 8 || self.target_period > 0x7FF {
             0
-        } else if self.const_vol() {
-            self.volume()
+        } else if self.const_vol {
+            self.volume
         } else {
             self.env.value
         };
@@ -94,7 +80,7 @@ impl Pulse {
         } else {
             self.timer -= 1;
         }
-        self.output = volume * Self::DUTY_TABLES[self.duty()][self.sequencer];
+        self.output = volume * Self::DUTY_TABLES[self.duty][self.sequencer];
     }
 
     pub fn tick_half_frame(&mut self) {
@@ -102,8 +88,8 @@ impl Pulse {
         self.sweep_period -= 1;
 
         if self.sweep_period < 0
-            && self.sw_enable()
-            && self.sw_shift() > 0
+            && self.sw_enable
+            && self.sw_shift > 0
             && self.period >= 8
             && self.target_period <= 0x7FF
         {
@@ -111,10 +97,10 @@ impl Pulse {
         }
         if self.sweep_period < 0 || self.sw_reload {
             self.sw_reload = false;
-            self.sweep_period = self.sw_period() as i8;
+            self.sweep_period = self.sw_period as i8;
         }
 
-        if !self.counter_halt() && self.length_counter > 0 {
+        if !self.counter_halt && self.length_counter > 0 {
             self.length_counter -= 1;
         }
     }
@@ -130,28 +116,38 @@ impl Pulse {
         }
     }
 
+    // counter_load: u8 = r3[3..8];
+
     pub fn write_r0(&mut self, data: u8) {
-        self.r0 = data;
-        self.env.divider_start = self.envelope();
-        self.env.looping = self.env_loop();
+        self.volume = data & 0xF;
+
+        self.const_vol = bit_bool!(data, 4);
+        self.counter_halt = bit_bool!(data, 5);
+        self.env.divider_start = self.volume;
+        self.env.looping = bit_bool!(data, 5);
+        self.duty = (data >> 6) as usize;
     }
 
     pub fn write_r1(&mut self, data: u8) {
-        self.r1 = data;
+        self.sw_shift = data & 0x7;
+        self.sw_negate = bit_bool!(data, 3);
+        self.sw_enable = bit_bool!(data, 7);
+        self.sw_period = (data >> 4) & 0x7;
         self.sw_reload = true;
     }
 
     pub fn write_r2(&mut self, data: u8) {
-        self.r2 = data;
-        self.period = self.timer();
+        self.timer_start = self.timer_start & 0xFF00 | data as u16;
+        self.period = self.timer_start;
     }
 
     pub fn write_r3(&mut self, data: u8) {
-        self.r3 = data;
-        self.period = self.timer();
+        self.timer_start = self.timer_start & 0x00FF | (((data & 0x7) as u16) << 8);
+        self.period = self.timer_start;
         self.sequencer = 0;
         if self.enable {
-            self.length_counter = super::LENGTH_VALUES[self.counter_load() as usize];
+            let length_idx = data >> 3;
+            self.length_counter = super::LENGTH_VALUES[length_idx as usize];
         };
         self.env.reset = true;
     }
