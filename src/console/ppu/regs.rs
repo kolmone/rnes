@@ -1,51 +1,61 @@
-#![allow(clippy::use_self)]
 #![allow(clippy::range_plus_one)]
+#![allow(clippy::use_self)]
 
 use bitbash::bitfield;
 
-bitfield! {
-    pub struct ControllerReg(pub u8);
-    pub new();
+use crate::macros::bit_bool;
 
-    pub field nametable:       u8 = [0..=1];
-    pub field increment:       bool = [2];
-    pub field sprite_half:     u16 = [3];
-    pub field bg_half:         u16 = [4];
-    pub field sprite_size:     bool = [5];
-    pub field ppu_master:      bool = [6];
-    pub field generate_nmi:    bool = [7];
+#[derive(Default)]
+pub struct ControllerReg {
+    pub nametable: u16,
+    pub increment: u16,
+    pub sprite_half: u16,
+    pub bg_half: u16,
+    pub sprite_size: u8,
+    pub ppu_master: bool,
+    pub generate_nmi: bool,
 }
 
-impl ControllerReg {
-    pub fn get_increment(&self) -> u16 {
-        if self.increment() {
-            32
-        } else {
-            1
-        }
-    }
-
-    pub fn act_sprite_size(&self) -> u8 {
-        if self.sprite_size() {
-            16
-        } else {
-            8
+impl From<u8> for ControllerReg {
+    fn from(data: u8) -> Self {
+        Self {
+            nametable: data as u16 & 0x3,
+            increment: if bit_bool!(data, 2) { 32 } else { 1 },
+            sprite_half: ((data as u16) >> 3) & 0x1,
+            bg_half: ((data as u16) >> 4) & 0x1,
+            sprite_size: if bit_bool!(data, 5) { 16 } else { 8 },
+            ppu_master: bit_bool!(data, 6),
+            generate_nmi: bit_bool!(data, 7),
         }
     }
 }
 
-bitfield! {
-    pub struct MaskReg(pub u8);
-    pub new();
+#[allow(clippy::struct_excessive_bools)]
+#[derive(Default)]
+pub struct MaskReg {
+    pub greyscale: bool,
+    pub show_left_bg: bool,
+    pub show_left_sp: bool,
+    pub show_bg: bool,
+    pub show_sprites: bool,
+    pub emphasize_red: bool,
+    pub emphasize_green: bool,
+    pub emphasize_blue: bool,
+}
 
-    pub field greyscale:       bool = [0];
-    pub field show_left_bg:    bool = [1];
-    pub field show_left_sp:    bool = [2];
-    pub field show_bg:         bool = [3];
-    pub field show_sprites:    bool = [4];
-    pub field emphasize_red:   bool = [5];
-    pub field emphasize_green: bool = [6];
-    pub field emphasize_blue:  bool = [7];
+impl From<u8> for MaskReg {
+    fn from(data: u8) -> Self {
+        Self {
+            greyscale: bit_bool!(data, 0),
+            show_left_bg: bit_bool!(data, 1),
+            show_left_sp: bit_bool!(data, 2),
+            show_bg: bit_bool!(data, 3),
+            show_sprites: bit_bool!(data, 4),
+            emphasize_red: bit_bool!(data, 5),
+            emphasize_green: bit_bool!(data, 6),
+            emphasize_blue: bit_bool!(data, 7),
+        }
+    }
 }
 
 bitfield! {

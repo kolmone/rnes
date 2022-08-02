@@ -20,6 +20,22 @@ use eyre::Context;
 use eyre::Result;
 use std::env;
 
+mod macros {
+    macro_rules! bit_bool {
+        ($value:ident, $bit:literal) => {
+            ($value >> $bit) & 0x1 == 1
+        };
+    }
+    macro_rules! bool_u8 {
+        ($value:expr, $bit:literal) => {
+            (($value as u8) << $bit)
+        };
+    }
+
+    pub(crate) use bit_bool;
+    pub(crate) use bool_u8;
+}
+
 // 21441960 / 12 = 1786830 - if NES ran at exactly 60 Hz
 // const MAIN_FREQ: usize = 21441960;
 const MAIN_FREQ: usize = 21_442_080; // 89342 PPU cycles * 60 * 4
@@ -54,7 +70,7 @@ fn trace(cpu: &mut Cpu) {
         cpu.register_a,
         cpu.register_x,
         cpu.register_y,
-        cpu.status.0,
+        u8::from(cpu.status),
         cpu.stack_pointer
     );
     // println!(

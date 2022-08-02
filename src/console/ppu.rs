@@ -86,8 +86,8 @@ impl Ppu {
             oam: [0; 4 * 64],
             prefetch_oam: [empty_sprite; 8],
             render_oam: [empty_sprite; 8],
-            ctrl: ControllerReg::new(),
-            mask: MaskReg::new(),
+            ctrl: ControllerReg::default(),
+            mask: MaskReg::default(),
             status: StatusReg::new(),
             oam_addr: 0,
             read_buf: 0,
@@ -114,10 +114,10 @@ impl Ppu {
     /// Progress by one PPU clock cycle
     pub fn tick(&mut self, cartridge: &mut Cartridge) -> bool {
         self.cycle += 1;
-        self.nmi_up = self.status.vblank() && self.ctrl.generate_nmi();
+        self.nmi_up = self.status.vblank() && self.ctrl.generate_nmi;
 
         if self.scanline < Self::RENDER_LINES {
-            if self.mask.show_bg() | self.mask.show_sprites() {
+            if self.mask.show_bg | self.mask.show_sprites {
                 self.render_tick(cartridge);
             }
             if self.scanline >= 0 && self.x < 256 {
@@ -159,13 +159,13 @@ impl Ppu {
             }
             (1, false) => {
                 // Todo: odd/even frame toggle?
-                self.pattern_addr = 0x1000 * self.ctrl.bg_half()
+                self.pattern_addr = 0x1000 * self.ctrl.bg_half
                     + 16 * self.internal_read(self.read_addr, cartridge) as u16
                     + self.vaddr.y_fine() as u16;
             }
             (1, true) => {
                 // Todo: odd/even frame toggle?
-                self.pattern_addr = 0x1000 * self.ctrl.bg_half()
+                self.pattern_addr = 0x1000 * self.ctrl.bg_half
                     + 16 * self.internal_read(self.read_addr, cartridge) as u16
                     + self.vaddr.y_fine() as u16;
 
@@ -204,14 +204,14 @@ impl Ppu {
                 let mut sprite_line = self.scanline as u16 - sprite.y_pos as u16;
                 // Vertical flipping
                 if sprite.attributes & 0x80 != 0 {
-                    sprite_line = self.ctrl.act_sprite_size() as u16 - 1 - sprite_line;
+                    sprite_line = self.ctrl.sprite_size as u16 - 1 - sprite_line;
                 };
                 // Set tile base address based on sprite size & tile index
-                self.pattern_addr = if self.ctrl.sprite_size() {
+                self.pattern_addr = if self.ctrl.sprite_size == 16 {
                     0x1000 * (sprite.tile_idx as u16 & 0x01)
                         + 0x10 * ((sprite.tile_idx as u16) & 0xFE)
                 } else {
-                    0x1000 * self.ctrl.sprite_half() + 0x10 * (sprite.tile_idx as u16)
+                    0x1000 * self.ctrl.sprite_half + 0x10 * (sprite.tile_idx as u16)
                 };
                 // Go to correct line in tile
                 self.pattern_addr += (sprite_line & 0x7) + (sprite_line & 0x8) * 2;
@@ -237,12 +237,12 @@ impl Ppu {
         if self.x == 0 {
             self.sp_in_idx = 0;
             self.sp_out_idx = 0;
-            if self.mask.show_sprites() {
+            if self.mask.show_sprites {
                 self.oam_addr = 0;
             }
         }
 
-        if self.mask.show_bg() {
+        if self.mask.show_bg {
             // Reset vertical & horizontal scrolling at start of frame
             if self.x == 304 && self.scanline == -1 {
                 self.vaddr.set_addr(self.scroll.addr());
@@ -281,8 +281,7 @@ impl Ppu {
                         self.prefetch_oam[self.sp_out_idx].y_pos = self.sprite_data;
                         self.prefetch_oam[self.sp_out_idx].sprite_idx = self.oam_addr / 4;
                         let y_start = self.sprite_data as isize;
-                        let y_end =
-                            self.sprite_data.wrapping_add(self.ctrl.act_sprite_size()) as isize;
+                        let y_end = self.sprite_data.wrapping_add(self.ctrl.sprite_size) as isize;
                         // If sprite not in range, go to next one
                         if self.scanline < y_start || self.scanline >= y_end {
                             self.oam_addr = self.oam_addr.wrapping_add(3);
@@ -324,8 +323,8 @@ impl Ppu {
     }
 
     fn draw_pixel(&mut self) {
-        let draw_bg = self.mask.show_bg() && (self.mask.show_left_bg() || self.x > 8);
-        let draw_sp = self.mask.show_sprites() && (self.mask.show_left_sp() || self.x > 8);
+        let draw_bg = self.mask.show_bg && (self.mask.show_left_bg || self.x > 8);
+        let draw_sp = self.mask.show_sprites && (self.mask.show_left_sp || self.x > 8);
 
         let (mut pixel, mut attribute) = (0, 0);
 
@@ -346,7 +345,7 @@ impl Ppu {
         }
 
         let palette_idx = (attribute * 4 + pixel) as usize;
-        let greyscale_mask = if self.mask.greyscale() { 0x30 } else { 0x3F };
+        let greyscale_mask = if self.mask.greyscale { 0x30 } else { 0x3F };
         let pixel = self.palette[palette_idx] & greyscale_mask;
         self.frame[self.scanline as usize * 256 + self.x] = pixel;
     }
@@ -414,10 +413,10 @@ impl Ppu {
         let addr = addr & PPU_BUS_MIRROR_MASK;
         match addr {
             REG_CONTROLLER => {
-                self.ctrl.0 = data;
-                self.scroll.set_base_nametable(self.ctrl.nametable() as u16);
+                self.ctrl = data.into();
+                self.scroll.set_base_nametable(self.ctrl.nametable);
             }
-            REG_MASK => self.mask.0 = data,
+            REG_MASK => self.mask = data.into(),
             REG_OAM_ADDR => self.oam_addr = data,
             REG_OAM_DATA => self.oam_write(data),
             REG_SCROLL => self.scroll.write_scroll(data),
@@ -435,7 +434,7 @@ impl Ppu {
 
     fn data_read(&mut self, cartridge: &mut Cartridge) -> u8 {
         let addr = self.vaddr.addr();
-        self.vaddr.increment(self.ctrl.get_increment());
+        self.vaddr.increment(self.ctrl.increment);
 
         let old_buf = self.read_buf;
         match addr {
@@ -466,7 +465,7 @@ impl Ppu {
 
     fn data_write(&mut self, data: u8, cartridge: &mut Cartridge) {
         let addr = self.vaddr.addr();
-        self.vaddr.increment(self.ctrl.get_increment());
+        self.vaddr.increment(self.ctrl.increment);
 
         match addr {
             0..=0x1FFF => cartridge.write_ppu(addr, data),

@@ -42,9 +42,9 @@ impl Apu {
         Self {
             pulse1: Pulse::new(0),
             pulse2: Pulse::new(1),
-            triangle: Triangle::new(),
-            noise: Noise::new(),
-            dmc: Dmc::new(),
+            triangle: Triangle::default(),
+            noise: Noise::default(),
+            dmc: Dmc::default(),
             output: vec![0.0; crate::APU_FREQ / 120],
             output_idx: 0,
             cycle: 0,
