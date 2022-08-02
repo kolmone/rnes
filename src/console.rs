@@ -16,6 +16,9 @@ pub struct Console<'a> {
     cpu: Cpu<'a>,
 }
 
+pub const SCREEN_WIDTH: usize = 256;
+pub const SCREEN_HEIGHT: usize = 240;
+
 impl<'a> Console<'a> {
     pub fn new(rom: &[u8], emulator: &'a mut Emulator) -> Result<Self> {
         let bus = Bus::new(Cartridge::new(rom)?, emulator);

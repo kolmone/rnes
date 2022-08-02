@@ -12,7 +12,6 @@
 
 mod console;
 mod emulator;
-mod renderer;
 
 use console::cpu::Cpu;
 use console::ppu::Ppu;

@@ -1,3 +1,5 @@
+mod renderer;
+
 use std::collections::HashMap;
 use std::thread::yield_now;
 use std::time::Duration;
@@ -37,8 +39,10 @@ use crate::{
     console::apu::Apu,
     console::controller::{Button, Controller},
     console::ppu::Ppu,
-    renderer::Renderer,
+    console::SCREEN_HEIGHT,
+    console::SCREEN_WIDTH,
 };
+use renderer::Renderer;
 
 macro_rules! fw_error {
     ( $x:expr ) => {
@@ -66,6 +70,12 @@ pub struct Emulator {
     menu_timeout_start: SystemTime,
     prev_cursor_pos: egui::Pos2,
 }
+
+const WINDOW_WIDTH: u32 = (SCREEN_WIDTH * 3) as u32;
+const WINDOW_HEIGHT: u32 = (SCREEN_HEIGHT * 3) as u32;
+
+pub const RENDER_WIDTH: usize = SCREEN_WIDTH;
+pub const RENDER_HEIGHT: usize = SCREEN_HEIGHT;
 
 impl Emulator {
     pub fn new(fullscreen: bool) -> Result<Self> {
@@ -122,7 +132,7 @@ impl Emulator {
         gl_attr.set_context_version(3, 2);
 
         let mut window = video
-            .window("rn3s", 256 * 3, 240 * 3)
+            .window("rn3s", WINDOW_WIDTH, WINDOW_HEIGHT)
             .opengl()
             .resizable()
             .build()?;
@@ -143,14 +153,17 @@ impl Emulator {
             mode.h = desktop_mode.h;
             fw_error!(window.set_display_mode(mode));
             fw_error!(window.set_fullscreen(sdl2::video::FullscreenType::True));
-            fw_error!(window.subsystem().gl_set_swap_interval(SwapInterval::VSync));
+            // fw_error!(window.subsystem().gl_set_swap_interval(SwapInterval::VSync));
+            fw_error!(window
+                .subsystem()
+                .gl_set_swap_interval(SwapInterval::Immediate));
         }
 
         let (mut painter, egui_state) =
             egui_sdl2_gl::with_sdl2(&window, ShaderVersion::Default, DpiScaling::Custom(1.25));
         let egui_context = egui::CtxRef::default();
-        let srgba: Vec<Color32> = vec![Color32::TRANSPARENT; 256 * 240];
-        let egui_texture = painter.new_user_texture((256, 240), &srgba, false);
+        let srgba: Vec<Color32> = vec![Color32::TRANSPARENT; RENDER_WIDTH * RENDER_HEIGHT];
+        let egui_texture = painter.new_user_texture((RENDER_WIDTH, RENDER_HEIGHT), &srgba, false);
 
         Ok((
             gl_context,
@@ -220,7 +233,7 @@ impl Emulator {
         }
     }
 
-    const ASPECT_RATIO: f32 = 256.0 / 240.0;
+    const ASPECT_RATIO: f32 = SCREEN_WIDTH as f32 / SCREEN_HEIGHT as f32;
     fn _get_game_pos(&self) -> (f32, f32, egui::Pos2) {
         let (ww, wh) = self.window.size();
         if (ww as f32) / (wh as f32) > Self::ASPECT_RATIO {
@@ -254,7 +267,7 @@ impl Emulator {
     }
 
     pub fn render_screen(&mut self, ppu: &Ppu) {
-        // let start_time = SystemTime::now();
+        let start_time = SystemTime::now();
         self.egui_context.begin_frame(self.egui_state.input.take());
 
         unsafe {
@@ -265,15 +278,14 @@ impl Emulator {
 
         let texture = self.renderer.render_texture(ppu);
         self.egui_painter
-            .update_user_texture_data(self.egui_texture, &texture);
-
-        // Draw the area containing the game
-        // egui::Area::new("game")
-        //     .fixed_pos(pos)
-        //     .order(Order::Background)
-        //     .show(&self.egui_context, |ui| {
-        //         ui.image(self.egui_texture, egui::vec2(width, height));
-        //     });
+            .update_user_texture_rgba8_data(self.egui_texture, texture);
+        egui::CentralPanel::default()
+            .frame(Frame::none())
+            .show(&self.egui_context, |ui| {
+                ui.centered_and_justified(|ui| {
+                    ui.image(self.egui_texture, Self::scale_game(ui.available_size()));
+                });
+            });
 
         // Draw audio buffer depth graph
         // egui::Window::new("audio buffer").show(&self.egui_context, |ui| {
@@ -282,14 +294,6 @@ impl Emulator {
         //         .view_aspect(1.0)
         //         .show(ui, |plot_ui| plot_ui.line(line));
         // });
-
-        egui::CentralPanel::default()
-            .frame(Frame::none())
-            .show(&self.egui_context, |ui| {
-                ui.centered_and_justified(|ui| {
-                    ui.image(self.egui_texture, Self::scale_game(ui.available_size()));
-                });
-            });
 
         let cursor_pos = self.egui_state.pointer_pos;
         if cursor_pos != self.prev_cursor_pos {
@@ -487,10 +491,10 @@ impl AudioHandler {
             .map(|x| self.hp_440hz.run(x))
             .collect();
 
-        match queue.queue_audio(&output) {
-            Ok(_) => (),
-            Err(e) => return Err(eyre!(e)),
-        }
+        // match queue.queue_audio(&output) {
+        //     Ok(_) => (),
+        //     Err(e) => return Err(eyre!(e)),
+        // }
 
         self.samples_processed += samples;
         Ok(())
