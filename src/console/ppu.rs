@@ -88,7 +88,7 @@ impl Ppu {
             render_oam: [empty_sprite; 8],
             ctrl: ControllerReg::default(),
             mask: MaskReg::default(),
-            status: StatusReg::new(),
+            status: StatusReg::default(),
             oam_addr: 0,
             read_buf: 0,
             scroll: ScrollReg::new(),
@@ -114,7 +114,7 @@ impl Ppu {
     /// Progress by one PPU clock cycle
     pub fn tick(&mut self, cartridge: &mut Cartridge) -> bool {
         self.cycle += 1;
-        self.nmi_up = self.status.vblank() && self.ctrl.generate_nmi;
+        self.nmi_up = self.status.vblank && self.ctrl.generate_nmi;
 
         if self.scanline < Self::RENDER_LINES {
             if self.mask.show_bg | self.mask.show_sprites {
@@ -132,12 +132,14 @@ impl Ppu {
             match self.scanline {
                 Self::LAST_LINE => {
                     self.scanline = -1;
-                    self.status.0 = 0;
+                    self.status.vblank = false;
+                    self.status.sprite0_hit = false;
+                    self.status.sprite_overflow = false;
                     // println!("Vblank cleared");
                     self.frame = [0; 256 * 240];
                 }
                 Self::VBLANK_START_LINE => {
-                    self.status.set_vblank(true);
+                    self.status.vblank = true;
                     // println!("frame done after {} cycles", self.cycle);
                     self.cycle = 0;
                     return true;
@@ -309,7 +311,7 @@ impl Ppu {
                     } else {
                         // Found more than 8 sprites
                         // println!("Sprite overflow");
-                        self.status.set_sprite_overflow(true);
+                        self.status.sprite_overflow = true;
                     }
                     if self.sp_in_idx == 2 {
                         self.oam_addr = 8;
@@ -383,7 +385,7 @@ impl Ppu {
             }
             if pixel > 0 && sprite.sprite_idx == 0 {
                 // println!("Sprite zero hit");
-                self.status.set_sprite0_hit(true);
+                self.status.sprite0_hit = true;
             }
             return Some((
                 sprite.attributes & 0x20 != 0,
@@ -399,8 +401,8 @@ impl Ppu {
         match addr {
             REG_STATUS => {
                 self.scroll.reset_latch();
-                let old_status = self.status.0;
-                self.status.set_vblank(false);
+                let old_status = self.status.into();
+                self.status.vblank = false;
                 old_status
             }
             REG_OAM_DATA => self.oam_read(),

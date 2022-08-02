@@ -4,6 +4,7 @@
 use bitbash::bitfield;
 
 use crate::macros::bit_bool;
+use crate::macros::bool_u8;
 
 #[derive(Default)]
 pub struct ControllerReg {
@@ -58,13 +59,17 @@ impl From<u8> for MaskReg {
     }
 }
 
-bitfield! {
-    pub struct StatusReg(pub u8);
-    pub new();
+#[derive(Default, Clone, Copy)]
+pub struct StatusReg {
+    pub sprite_overflow: bool, // = [5];
+    pub sprite0_hit: bool,     // = [6];
+    pub vblank: bool,          // = [7];
+}
 
-    pub field sprite_overflow: bool = [5];
-    pub field sprite0_hit:     bool = [6];
-    pub field vblank:          bool = [7];
+impl From<StatusReg> for u8 {
+    fn from(v: StatusReg) -> Self {
+        bool_u8!(v.sprite_overflow, 5) | bool_u8!(v.sprite0_hit, 6) | bool_u8!(v.vblank, 7)
+    }
 }
 
 bitfield! {
