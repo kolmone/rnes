@@ -1,35 +1,26 @@
-#![allow(clippy::range_plus_one)]
+use crate::macros::bit_bool;
 
-use bitbash::bitfield;
+#[allow(clippy::struct_excessive_bools)]
+#[derive(Default)]
+pub struct Triangle{
 
-bitfield! {
-    #[derive(Default)]
-    pub struct Triangle{
-        r0: u8,
-        r2: u8,
-        r3: u8,
+    timer: u16,
+    enable: bool,
 
-        timer: u16,
-        enable: bool,
+    pub length_counter: u8,
 
-        pub length_counter: u8,
+    wave_ptr: usize,
+    linear_counter: u8,
+    reload_linear: bool,
 
-        wave_ptr: usize,
-        linear_counter: u8,
-        reload_linear: bool,
+    pub output: u8,
 
-        pub output: u8,
-    }
-
-    field linear_counter: u8 = r0[0..7];
-    field control: bool = r0[7];
-    field counter_halt: bool = r0[7];
-
-    field timer_lo: u8 = r2[0..8];
-    field timer_hi: u8 = r3[0..3];
-    field timer: u16 = r2[0..8] ~ r3[0..3];
-    field counter_load: u8 = r3[3..8];
+    linear_counter_start: u8,
+    control: bool,
+    counter_halt: bool,
+    timer_start: u16,
 }
+
 
 impl Triangle {
 
@@ -39,17 +30,13 @@ impl Triangle {
         0,  1,  2,  3,  4,  5,  6, 7, 8, 9, 10, 11, 12, 13, 14, 15,
     ];
 
-    pub fn new() -> Self {
-        Self { ..Default::default() }
-    }
-
     pub fn tick(&mut self) {
         if !self.enable || self.length_counter == 0 || self.linear_counter == 0 {
             return;
         }
         
         if self.timer == 0 {
-            self.timer = self.timer();
+            self.timer = self.timer_start;
             if self.wave_ptr == 0 {
                 self.wave_ptr = 31;
             } else {
@@ -62,20 +49,20 @@ impl Triangle {
     }
 
     pub fn tick_half_frame(&mut self) {
-        if !self.counter_halt() && self.length_counter > 0 {
+        if !self.counter_halt && self.length_counter > 0 {
             self.length_counter -= 1;
         }
     }
 
     pub fn tick_quarter_frame(&mut self) {
         if self.reload_linear {
-            self.linear_counter = self.linear_counter();
+            self.linear_counter = self.linear_counter_start;
         } else if self.linear_counter > 0 {
             self.linear_counter -= 1;
         }
 
         // Disable reload if control is clear
-        if !self.control() {
+        if !self.control {
             self.reload_linear = false;
         }
     }
@@ -86,19 +73,23 @@ impl Triangle {
             self.length_counter = 0;
         }
     }
+    
 
     pub fn write_r0(&mut self, data: u8) {
-        self.r0 = data;
+        self.linear_counter_start = data & 0x7F;
+        self.control = bit_bool!(data, 7);
+        self.counter_halt = bit_bool!(data, 7);
     }
 
     pub fn write_r2(&mut self, data: u8) {
-        self.r2 = data;
+        self.timer_start = self.timer_start & 0xFF00 | data as u16;
     }
 
     pub fn write_r3(&mut self, data: u8) {
-        self.r3 = data;
+        self.timer_start = self.timer_start & 0x00FF | (((data & 0x7) as u16) << 8);
         if self.enable {
-            self.length_counter = super::LENGTH_VALUES[self.counter_load() as usize];
+            let length_idx = data >> 3;
+            self.length_counter = super::LENGTH_VALUES[length_idx as usize];
         };
         self.reload_linear = true;
     }
