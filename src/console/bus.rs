@@ -46,7 +46,7 @@ impl<'a> Bus<'a> {
         }
         for _ in 0..3 * cycles {
             if self.ppu.tick(&mut self.cartridge) {
-                self.emulator.render_screen(&self.ppu)?;
+                self.emulator.render_screen(&self.ppu);
                 self.emulator.handle_input(&mut self.controller);
             }
         }
