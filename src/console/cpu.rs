@@ -65,6 +65,8 @@ impl From<StatusReg> for u8 {
 const SIGN_MASK: u8 = 0x1 << 7;
 const RESET_ADDR: u16 = 0xFFFC;
 const STACK_PAGE: u16 = 0x0100;
+const IRQ_DIS: u8 = 1 << 2;
+const UNUSED: u8 = 1 << 5;
 
 impl<'a> Cpu<'a> {
     pub fn new(bus: Bus<'a>) -> Self {
@@ -74,7 +76,7 @@ impl<'a> Cpu<'a> {
             register_y: 0,
             program_counter: 0,
             stack_pointer: 0,
-            status: ((1 << 2) | (1 << 5)).into(), // IRQ disabled & unused bit set
+            status: (IRQ_DIS | UNUSED).into(),
             bus,
             mnemonic: "".to_owned(),
             cycles: 0,
@@ -282,12 +284,9 @@ impl<'a> Cpu<'a> {
         Ok(())
     }
 
-    pub fn reset(&mut self) {
-        self.register_a = 0;
-        self.register_x = 0;
-        self.register_y = 0;
+    fn reset(&mut self) {
         self.stack_pointer = 0xfd;
-        self.status = ((1 << 2) | (1 << 5)).into();
+        self.status.irq_disable = true;
 
         self.program_counter = self.read_u16(RESET_ADDR);
     }
@@ -301,6 +300,11 @@ impl<'a> Cpu<'a> {
         instructions.sort_unstable_by_key(|k| k.opcode);
 
         loop {
+            if self.bus.reset_triggered() {
+                self.bus.reset();
+                self.reset();
+            }
+
             let op = self.read(self.program_counter);
 
             let instruction = instructions[op as usize];

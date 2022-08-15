@@ -49,8 +49,6 @@ fn run_rom(file: &str, do_trace: bool, fullscreen: bool) -> Result<()> {
     let mut emulator = emulator::Emulator::new(fullscreen)?;
     let mut console = console::Console::new(&rom, &mut emulator)?;
 
-    console.reset();
-
     console.run_with_callback(move |cpu| {
         if do_trace {
             trace(cpu);

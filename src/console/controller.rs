@@ -14,6 +14,8 @@ pub struct Controller {
     buttons: [bool; 8],
     strobe: bool,
     read_ptr: usize,
+
+    reset: bool,
 }
 
 impl Controller {
@@ -22,6 +24,7 @@ impl Controller {
             buttons: [false; 8],
             strobe: false,
             read_ptr: 0,
+            reset: true,
         }
     }
 
@@ -50,5 +53,16 @@ impl Controller {
         } else {
             1
         }
+    }
+
+    pub fn reset(&mut self) {
+        self.reset = true;
+    }
+
+    // Gets current reset state and clears it if active
+    pub fn reset_triggered(&mut self) -> bool {
+        let state = self.reset;
+        self.reset = false;
+        state
     }
 }

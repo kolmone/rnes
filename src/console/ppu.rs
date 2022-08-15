@@ -111,7 +111,16 @@ impl Ppu {
         }
     }
 
-    /// Progress by one PPU clock cycle
+    pub fn reset(&mut self) {
+        self.ctrl = ControllerReg::default();
+        self.mask = MaskReg::default();
+        self.scroll.reset_latch();
+        self.scroll.data = 0;
+        self.read_buf = 0;
+        self.cycle = 0;
+    }
+
+    // Progress by one PPU clock cycle
     pub fn tick(&mut self, cartridge: &mut Cartridge) -> bool {
         self.cycle += 1;
         self.nmi_up = self.status.vblank && self.ctrl.generate_nmi;

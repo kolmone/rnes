@@ -27,11 +27,6 @@ impl<'a> Console<'a> {
         Ok(Self { cpu })
     }
 
-    pub fn reset(&mut self) {
-        self.cpu.reset();
-        // todo: also reset bus with apu & ppu,
-    }
-
     pub fn run_with_callback<F>(&mut self, callback: F) -> Result<()>
     where
         F: FnMut(&mut Cpu),

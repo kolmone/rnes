@@ -1,7 +1,6 @@
 mod palette;
 
-use crate::{console::SCREEN_WIDTH, Ppu};
-use egui_sdl2_gl::egui::Color32;
+use crate::Ppu;
 use eyre::Result;
 use palette::Palette;
 

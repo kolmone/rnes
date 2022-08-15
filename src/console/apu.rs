@@ -55,6 +55,10 @@ impl Apu {
         }
     }
 
+    pub fn reset(&mut self) {
+        self.set_enable(0);
+    }
+
     pub fn write(&mut self, addr: u16, data: u8) {
         // println!("Writing {:2X} to {:4X}", data, addr);
         match addr {
@@ -81,14 +85,8 @@ impl Apu {
             0x4012 => self.dmc.write_r2(data),
             0x4013 => self.dmc.write_r3(data),
 
-            0x4015 => {
-                // println!("ctrl write {:X}", data);
-                self.pulse1.set_enable(data & 0x01 != 0);
-                self.pulse2.set_enable(data & 0x02 != 0);
-                self.triangle.set_enable(data & 0x04 != 0);
-                self.noise.set_enable(data & 0x08 != 0);
-                self.dmc.set_enable(data & 0x10 != 0);
-            }
+            0x4015 => self.set_enable(data),
+
             0x4017 => {
                 self.irq_disable = data & 0x40 != 0;
                 self.irq = if self.irq_disable { false } else { self.irq };
@@ -99,6 +97,14 @@ impl Apu {
             }
             _ => (),
         }
+    }
+
+    fn set_enable(&mut self, data: u8) {
+        self.pulse1.set_enable(data & 0x01 != 0);
+        self.pulse2.set_enable(data & 0x02 != 0);
+        self.triangle.set_enable(data & 0x04 != 0);
+        self.noise.set_enable(data & 0x08 != 0);
+        self.dmc.set_enable(data & 0x10 != 0);
     }
 
     pub fn read(&mut self, addr: u16) -> u8 {
