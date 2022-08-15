@@ -132,7 +132,7 @@ impl Emulator {
         gl_attr.set_context_version(3, 2);
 
         let mut window = video
-            .window("rn3s", WINDOW_WIDTH, WINDOW_HEIGHT)
+            .window("rN3S", WINDOW_WIDTH, WINDOW_HEIGHT)
             .opengl()
             .resizable()
             .build()?;
@@ -153,10 +153,7 @@ impl Emulator {
             mode.h = desktop_mode.h;
             fw_error!(window.set_display_mode(mode));
             fw_error!(window.set_fullscreen(sdl2::video::FullscreenType::True));
-            // fw_error!(window.subsystem().gl_set_swap_interval(SwapInterval::VSync));
-            fw_error!(window
-                .subsystem()
-                .gl_set_swap_interval(SwapInterval::Immediate));
+            fw_error!(window.subsystem().gl_set_swap_interval(SwapInterval::VSync));
         }
 
         let (mut painter, egui_state) =
@@ -201,7 +198,12 @@ impl Emulator {
         ])
     }
 
-    pub fn handle_input(&mut self, controller: &mut Controller) {
+    pub fn handle_io(&mut self, ppu: &Ppu, controller: &mut Controller) {
+        self.render_screen(ppu, controller);
+        self.handle_input(controller);
+    }
+
+    fn handle_input(&mut self, controller: &mut Controller) {
         for event in self.event_pump.poll_iter() {
             match event {
                 Event::KeyDown {
@@ -209,6 +211,12 @@ impl Emulator {
                     ..
                 }
                 | Event::Quit { .. } => std::process::exit(0),
+                Event::KeyDown {
+                    keycode: Some(Keycode::R),
+                    ..
+                } => {
+                    controller.reset();
+                }
                 Event::KeyDown { keycode, .. } => {
                     if let Some(key) = self.keymap.get(&keycode.unwrap_or(Keycode::Ampersand)) {
                         controller.set_button_state(*key, true);
@@ -266,8 +274,8 @@ impl Emulator {
         }
     }
 
-    pub fn render_screen(&mut self, ppu: &Ppu) {
-        let start_time = SystemTime::now();
+    fn render_screen(&mut self, ppu: &Ppu, controller: &mut Controller) {
+        // let start_time = SystemTime::now();
         self.egui_context.begin_frame(self.egui_state.input.take());
 
         unsafe {
@@ -318,7 +326,8 @@ impl Emulator {
                             println!("Loading ROM!");
                         }
                         if ui.button("Reset").clicked() {
-                            println!("Resetting!");
+                            controller.reset();
+                            ui.close_menu();
                         }
                         if ui.button("Quit").clicked() {
                             std::process::exit(0);
@@ -487,8 +496,8 @@ impl AudioHandler {
         let output: Vec<f32> = self.output_data[0]
             .iter()
             .map(|x| self.lp_14khz.run(*x))
-            .map(|x| self.hp_90hz.run(x))
-            .map(|x| self.hp_440hz.run(x))
+            // .map(|x| self.hp_90hz.run(x))
+            // .map(|x| self.hp_440hz.run(x))
             .collect();
 
         match queue.queue_audio(&output) {

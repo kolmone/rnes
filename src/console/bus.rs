@@ -46,8 +46,7 @@ impl<'a> Bus<'a> {
         }
         for _ in 0..3 * cycles {
             if self.ppu.tick(&mut self.cartridge) {
-                self.emulator.render_screen(&self.ppu);
-                self.emulator.handle_input(&mut self.controller);
+                self.emulator.handle_io(&self.ppu, &mut self.controller);
             }
         }
         Ok(())
@@ -59,6 +58,15 @@ impl<'a> Bus<'a> {
 
     pub fn irq_active(&mut self) -> bool {
         self.cartridge.irq_active() | self.apu.irq_active()
+    }
+
+    pub fn reset_triggered(&mut self) -> bool {
+        self.controller.reset_triggered()
+    }
+
+    pub fn reset(&mut self) {
+        self.ppu.reset();
+        self.apu.reset();
     }
 
     pub fn read(&mut self, addr: u16) -> u8 {

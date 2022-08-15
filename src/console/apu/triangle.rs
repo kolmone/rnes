@@ -9,7 +9,7 @@ pub struct Triangle{
 
     pub length_counter: u8,
 
-    wave_ptr: usize,
+    pub wave_ptr: usize,
     linear_counter: u8,
     reload_linear: bool,
 
