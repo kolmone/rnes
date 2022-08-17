@@ -1,5 +1,7 @@
 mod palette;
 
+use crate::console::SCREEN_HEIGHT;
+use crate::console::SCREEN_WIDTH;
 use crate::Ppu;
 use eyre::Result;
 use palette::Palette;
@@ -16,7 +18,7 @@ impl Renderer {
     }
 
     pub fn render_texture(&mut self, ppu: &Ppu) -> Vec<u8> {
-        let mut texture = vec![0; super::RENDER_WIDTH * super::RENDER_HEIGHT * 4];
+        let mut texture = vec![0; SCREEN_WIDTH * SCREEN_HEIGHT * 4];
         for (idx, pixel) in ppu.frame.iter().enumerate() {
             let (r, g, b) = self.palette.palette[*pixel as usize];
             texture[idx * 4] = r;

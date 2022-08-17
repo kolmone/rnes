@@ -1,175 +1,48 @@
 mod renderer;
-
-use std::collections::HashMap;
-use std::thread::yield_now;
-use std::time::Duration;
-use std::time::SystemTime;
+mod ui;
 
 use biquad::{Biquad, Coefficients, DirectForm2Transposed, ToHertz, Q_BUTTERWORTH_F32};
-use egui_sdl2_gl::egui;
-use egui_sdl2_gl::egui::Color32;
-use egui_sdl2_gl::egui::CtxRef;
-use egui_sdl2_gl::egui::Frame;
-use egui_sdl2_gl::egui::TextureId;
-use egui_sdl2_gl::egui::Vec2;
-use egui_sdl2_gl::painter::Painter;
-use egui_sdl2_gl::DpiScaling;
-use egui_sdl2_gl::EguiStateHandler;
-use egui_sdl2_gl::ShaderVersion;
+
 use eyre::eyre;
 use eyre::Result;
 use rubato::InterpolationParameters;
 use rubato::InterpolationType;
 use rubato::WindowFunction;
 use rubato::{Resampler, SincFixedIn};
-use sdl2::mouse::MouseUtil;
-use sdl2::video::FullscreenType;
-use sdl2::video::GLContext;
-use sdl2::video::GLProfile;
-use sdl2::video::SwapInterval;
 use sdl2::{
     audio::{AudioQueue, AudioSpecDesired},
-    event::Event,
-    keyboard::Keycode,
-    video::Window,
-    EventPump, Sdl,
+    Sdl,
 };
 
-use crate::{
-    console::apu::Apu,
-    console::controller::{Button, Controller},
-    console::ppu::Ppu,
-    console::SCREEN_HEIGHT,
-    console::SCREEN_WIDTH,
-};
+use crate::macros::fw_error;
+use crate::{console::apu::Apu, console::controller::Controller, console::ppu::Ppu};
 use renderer::Renderer;
-
-macro_rules! fw_error {
-    ( $x:expr ) => {
-        match $x {
-            Ok(v) => v,
-            Err(e) => return Err(eyre!(e)),
-        }
-    };
-}
+use ui::Ui;
 
 pub struct Emulator {
-    event_pump: EventPump,
-    keymap: HashMap<Keycode, Button>,
-    _gl_context: GLContext,
-    mouse: MouseUtil,
-    window: Window,
     renderer: Renderer,
     audio_handler: AudioHandler,
     audio_device: AudioQueue<f32>,
-    next_render_time: SystemTime,
-    egui_context: CtxRef,
-    egui_painter: Painter,
-    egui_state: EguiStateHandler,
-    egui_texture: TextureId,
-    menu_timeout_start: SystemTime,
-    prev_cursor_pos: egui::Pos2,
+    ui: Ui,
 }
-
-const WINDOW_WIDTH: u32 = (SCREEN_WIDTH * 3) as u32;
-const WINDOW_HEIGHT: u32 = (SCREEN_HEIGHT * 3) as u32;
-
-pub const RENDER_WIDTH: usize = SCREEN_WIDTH;
-pub const RENDER_HEIGHT: usize = SCREEN_HEIGHT;
 
 impl Emulator {
     pub fn new(fullscreen: bool) -> Result<Self> {
         let sdl = fw_error!(sdl2::init());
 
-        let event_pump = fw_error!(sdl.event_pump());
-
-        let (gl_context, window, egui_context, egui_painter, egui_state, egui_texture) =
-            Self::init_video(&sdl, fullscreen)?;
         let renderer = Renderer::new()?;
         let audio_device = Self::init_audio(&sdl)?;
 
         let audio_handler = AudioHandler::new(48000, crate::APU_FREQ / 120)?;
 
-        let mouse = sdl.mouse();
+        let ui = Ui::new(&sdl, fullscreen)?;
 
         Ok(Self {
-            event_pump,
-            keymap: Self::build_keymap(),
-            _gl_context: gl_context,
-            mouse,
-            window,
             renderer,
-            audio_device,
             audio_handler,
-            next_render_time: SystemTime::now() + Duration::from_nanos(16_666_666),
-            egui_context,
-            egui_painter,
-            egui_state,
-            egui_texture,
-            menu_timeout_start: SystemTime::now(),
-            prev_cursor_pos: egui::Pos2::default(),
+            audio_device,
+            ui,
         })
-    }
-
-    fn init_video(
-        sdl: &Sdl,
-        fullscreen: bool,
-    ) -> Result<(
-        GLContext,
-        Window,
-        CtxRef,
-        Painter,
-        EguiStateHandler,
-        TextureId,
-    )> {
-        let video = fw_error!(sdl.video());
-
-        let gl_attr = video.gl_attr();
-        gl_attr.set_context_profile(GLProfile::Core);
-        gl_attr.set_double_buffer(true);
-        gl_attr.set_multisample_samples(4);
-        gl_attr.set_framebuffer_srgb_compatible(true);
-        gl_attr.set_context_version(3, 2);
-
-        let mut window = video
-            .window("rN3S", WINDOW_WIDTH, WINDOW_HEIGHT)
-            .opengl()
-            .resizable()
-            .build()?;
-
-        let gl_context = fw_error!(window.gl_create_context());
-        assert_eq!(gl_attr.context_profile(), GLProfile::Core);
-        assert_eq!(gl_attr.context_version(), (3, 2));
-
-        fw_error!(window
-            .subsystem()
-            .gl_set_swap_interval(SwapInterval::Immediate));
-
-        if fullscreen {
-            let mut mode = fw_error!(window.display_mode());
-            mode.refresh_rate = 60;
-            let desktop_mode = fw_error!(video.desktop_display_mode(0));
-            mode.w = desktop_mode.w;
-            mode.h = desktop_mode.h;
-            fw_error!(window.set_display_mode(mode));
-            fw_error!(window.set_fullscreen(sdl2::video::FullscreenType::True));
-            fw_error!(window.subsystem().gl_set_swap_interval(SwapInterval::VSync));
-        }
-
-        let (mut painter, egui_state) =
-            egui_sdl2_gl::with_sdl2(&window, ShaderVersion::Default, DpiScaling::Custom(1.25));
-        let egui_context = egui::CtxRef::default();
-        let srgba: Vec<Color32> = vec![Color32::TRANSPARENT; RENDER_WIDTH * RENDER_HEIGHT];
-        let egui_texture = painter.new_user_texture((RENDER_WIDTH, RENDER_HEIGHT), &srgba, false);
-
-        Ok((
-            gl_context,
-            window,
-            egui_context,
-            painter,
-            egui_state,
-            egui_texture,
-        ))
     }
 
     fn init_audio(sdl: &Sdl) -> Result<AudioQueue<f32>> {
@@ -185,184 +58,10 @@ impl Emulator {
         Ok(device)
     }
 
-    fn build_keymap() -> HashMap<Keycode, Button> {
-        HashMap::from([
-            (Keycode::Down, Button::Down),
-            (Keycode::Up, Button::Up),
-            (Keycode::Right, Button::Right),
-            (Keycode::Left, Button::Left),
-            (Keycode::Q, Button::Select),
-            (Keycode::W, Button::Start),
-            (Keycode::S, Button::A),
-            (Keycode::A, Button::B),
-        ])
-    }
-
     pub fn handle_io(&mut self, ppu: &Ppu, controller: &mut Controller) {
-        self.render_screen(ppu, controller);
-        self.handle_input(controller);
-    }
-
-    fn handle_input(&mut self, controller: &mut Controller) {
-        for event in self.event_pump.poll_iter() {
-            match event {
-                Event::KeyDown {
-                    keycode: Some(Keycode::Escape),
-                    ..
-                }
-                | Event::Quit { .. } => std::process::exit(0),
-                Event::KeyDown {
-                    keycode: Some(Keycode::R),
-                    ..
-                } => {
-                    controller.reset();
-                }
-                Event::KeyDown { keycode, .. } => {
-                    if let Some(key) = self.keymap.get(&keycode.unwrap_or(Keycode::Ampersand)) {
-                        controller.set_button_state(*key, true);
-                    } else {
-                        self.egui_state
-                            .process_input(&self.window, event, &mut self.egui_painter);
-                    }
-                }
-                Event::KeyUp { keycode, .. } => {
-                    if let Some(key) = self.keymap.get(&keycode.unwrap_or(Keycode::Ampersand)) {
-                        controller.set_button_state(*key, false);
-                    } else {
-                        self.egui_state
-                            .process_input(&self.window, event, &mut self.egui_painter);
-                    }
-                }
-                _ => {
-                    self.egui_state
-                        .process_input(&self.window, event, &mut self.egui_painter);
-                }
-            }
-        }
-    }
-
-    const ASPECT_RATIO: f32 = SCREEN_WIDTH as f32 / SCREEN_HEIGHT as f32;
-    fn _get_game_pos(&self) -> (f32, f32, egui::Pos2) {
-        let (ww, wh) = self.window.size();
-        if (ww as f32) / (wh as f32) > Self::ASPECT_RATIO {
-            // Screen wider than default
-            let h = wh as f32;
-            let w = h * Self::ASPECT_RATIO;
-            let pos = egui::pos2((ww as f32 - w) / 2.0, 0.0);
-            (w, h, pos)
-        } else {
-            // Screen taller than default
-            let w = ww as f32;
-            let h = w / Self::ASPECT_RATIO;
-            let pos = egui::pos2(0.0, (wh as f32 - h) / 2.0);
-            (w, h, pos)
-        }
-    }
-
-    fn scale_game(available_space: Vec2) -> Vec2 {
-        let (w, h) = (available_space.x, available_space.y);
-        if w / h > Self::ASPECT_RATIO {
-            // Screen wider than default
-            let w = h * Self::ASPECT_RATIO;
-            // let pos = egui::pos2((ww as f32 - w) / 2.0, 0.0);
-            Vec2::new(w, h)
-        } else {
-            // Screen taller than default
-            let h = w / Self::ASPECT_RATIO;
-            // let pos = egui::pos2(0.0, (wh as f32 - h) / 2.0);
-            Vec2::new(w, h)
-        }
-    }
-
-    fn render_screen(&mut self, ppu: &Ppu, controller: &mut Controller) {
-        // let start_time = SystemTime::now();
-        self.egui_context.begin_frame(self.egui_state.input.take());
-
-        unsafe {
-            // Clear the screen
-            gl::ClearColor(0.0, 0.0, 0.0, 1.0);
-            gl::Clear(gl::COLOR_BUFFER_BIT);
-        }
-
-        let texture = self.renderer.render_texture(ppu);
-        self.egui_painter
-            .update_user_texture_rgba8_data(self.egui_texture, texture);
-        egui::CentralPanel::default()
-            .frame(Frame::none())
-            .show(&self.egui_context, |ui| {
-                ui.centered_and_justified(|ui| {
-                    ui.image(self.egui_texture, Self::scale_game(ui.available_size()));
-                });
-            });
-
-        // Draw audio buffer depth graph
-        // egui::Window::new("audio buffer").show(&self.egui_context, |ui| {
-        //     let line = Line::new(Values::from_ys_f32(&self.audio_handler.average_history));
-        //     Plot::new("buffer depth")
-        //         .view_aspect(1.0)
-        //         .show(ui, |plot_ui| plot_ui.line(line));
-        // });
-
-        let cursor_pos = self.egui_state.pointer_pos;
-        if cursor_pos != self.prev_cursor_pos {
-            self.prev_cursor_pos = cursor_pos;
-            self.menu_timeout_start = SystemTime::now();
-        }
-
-        let elapsed = match SystemTime::now().duration_since(self.menu_timeout_start) {
-            Ok(val) => val,
-            Err(_) => Duration::from_secs(0),
-        };
-
-        let hide_panel = elapsed > Duration::from_secs(2);
-
-        self.mouse.show_cursor(!hide_panel);
-
-        if !hide_panel {
-            egui::TopBottomPanel::top("top panel").show(&self.egui_context, |ui| {
-                egui::menu::bar(ui, |ui| {
-                    ui.menu_button("File", |ui| {
-                        if ui.button("Load ROM").clicked() {
-                            println!("Loading ROM!");
-                        }
-                        if ui.button("Reset").clicked() {
-                            controller.reset();
-                            ui.close_menu();
-                        }
-                        if ui.button("Quit").clicked() {
-                            std::process::exit(0);
-                        }
-                    });
-                });
-            });
-        }
-
-        let (egui_output, paint_cmds) = self.egui_context.end_frame();
-        self.egui_state.process_output(&self.window, &egui_output);
-
-        let paint_jobs = self.egui_context.tessellate(paint_cmds);
-        self.egui_painter
-            .paint_jobs(None, paint_jobs, &self.egui_context.font_image());
-
-        // println!(
-        //     "Rendering took {:?}",
-        //     SystemTime::now().duration_since(start_time).unwrap()
-        // );
-
-        let minimized = self.window.window_flags() & 64 != 0;
-        if self.window.fullscreen_state() != FullscreenType::True || minimized {
-            let mut now = SystemTime::now();
-            if now < self.next_render_time {
-                while now < self.next_render_time {
-                    yield_now();
-                    now = SystemTime::now();
-                }
-            } else {
-                println!("Frame rendering late");
-            }
-            self.next_render_time = now + Duration::from_nanos(16_666_666);
-        }
-        self.window.gl_swap_window();
+        let game_texture = self.renderer.render_texture(ppu);
+        self.ui.update(game_texture, controller);
+        self.ui.handle_input(controller);
     }
 
     pub fn handle_audio(&mut self, apu: &Apu) -> Result<()> {

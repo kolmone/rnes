@@ -31,8 +31,18 @@ mod macros {
         };
     }
 
+    macro_rules! fw_error {
+        ( $x:expr ) => {
+            match $x {
+                Ok(v) => v,
+                Err(e) => return Err(eyre!(e)),
+            }
+        };
+    }
+
     pub(crate) use bit_bool;
     pub(crate) use bool_u8;
+    pub(crate) use fw_error;
 }
 
 // 21441960 / 12 = 1786830 - if NES ran at exactly 60 Hz
