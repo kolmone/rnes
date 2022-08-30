@@ -1,6 +1,5 @@
 #![warn(trivial_numeric_casts)]
 #![warn(clippy::pedantic)]
-#![warn(clippy::nursery)]
 #![warn(clippy::unwrap_used)]
 #![warn(clippy::expect_used)]
 #![allow(clippy::cast_sign_loss)]
